@@ -1,4 +1,4 @@
-# Uhmegle Clone - Video Chat App
+# Meet Stranger Clone - Video Chat App
 
 A modern video chat application inspired by Omegle, built with Next.js, WebRTC, and Socket.IO.
 
@@ -22,28 +22,32 @@ A modern video chat application inspired by Omegle, built with Next.js, WebRTC, 
 
 ### Prerequisites
 
-- Node.js 18+ 
+- Node.js 18+
 - npm or yarn
 
 ### Installation
 
 1. Clone the repository:
+
 ```bash
 git clone <repository-url>
 cd video-chat-app
 ```
 
 2. Install dependencies:
+
 ```bash
 npm install
 ```
 
 3. Create environment file:
+
 ```bash
 echo "NEXT_PUBLIC_SOCKET_URL=http://localhost:3001" > .env.local
 ```
 
 4. Start the development servers:
+
 ```bash
 # Start both frontend and backend
 npm run dev:full
@@ -61,7 +65,7 @@ npm run dev
 ## Usage
 
 1. **Landing Page**: Choose between text or video chat, optionally add interests
-2. **Video Chat**: 
+2. **Video Chat**:
    - Top video window shows the other user
    - Bottom video window shows your own webcam
    - Chat panel on the right for messaging
@@ -86,6 +90,7 @@ server.js                 # Socket.IO signaling server
 ## API Endpoints
 
 The Socket.IO server handles:
+
 - User matching and room creation
 - WebRTC signaling (offers, answers, ICE candidates)
 - Chat message relay

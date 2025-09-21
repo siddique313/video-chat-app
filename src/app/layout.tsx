@@ -13,8 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Uhmegle - Talk to Strangers",
-  description: "Uhmegle is the new Omegle alternative, where you can meet new friends. Connect with strangers through text or video chat.",
+  title: "Meet Stranger - Talk to Strangers",
+  description:
+    "Meet Stranger is the new Omegle alternative, where you can meet new friends. Connect with strangers through text or video chat.",
 };
 
 export default function RootLayout({

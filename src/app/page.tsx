@@ -1,21 +1,21 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { MessageCircle, Video, Sun, Flag } from 'lucide-react';
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { MessageCircle, Video, Sun, Flag } from "lucide-react";
 
 export default function Home() {
-  const [interests, setInterests] = useState('');
-  const [chatType, setChatType] = useState<'text' | 'video' | null>(null);
+  const [interests, setInterests] = useState("");
+  const [chatType, setChatType] = useState<"text" | "video" | null>(null);
   const router = useRouter();
 
   const handleStartChat = () => {
     if (chatType) {
       const params = new URLSearchParams();
       if (interests.trim()) {
-        params.set('interests', interests.trim());
+        params.set("interests", interests.trim());
       }
-      params.set('type', chatType);
+      params.set("type", chatType);
       router.push(`/chat?${params.toString()}`);
     }
   };
@@ -28,7 +28,7 @@ export default function Home() {
           <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
             <MessageCircle className="w-5 h-5 text-white" />
           </div>
-          <h1 className="text-2xl font-bold text-orange-500">Uhmegle</h1>
+          <h1 className="text-2xl font-bold text-orange-500">Meet Stranger</h1>
         </div>
         <div className="flex items-center gap-2">
           <Sun className="w-5 h-5 text-yellow-400" />
@@ -45,32 +45,33 @@ export default function Home() {
           <h2 className="text-3xl font-bold text-white mb-4 text-center">
             Talk to strangers with your interests!
           </h2>
-          
+
           <p className="text-white mb-8 text-center">
-            Uhmegle is the new Omegle alternative, where you can meet new friends. 
-            When you use Uhmegle, you are paired in a random chat with a stranger.
+            Meet Stranger is the new Omegle alternative, where you can meet new
+            friends. When you use Meet Stranger, you are paired in a random chat
+            with a stranger.
           </p>
 
           <div className="mb-6">
             <p className="text-white mb-4 text-center">Start chatting:</p>
             <div className="flex justify-center gap-4">
               <button
-                onClick={() => setChatType('text')}
+                onClick={() => setChatType("text")}
                 className={`px-8 py-3 rounded-lg font-semibold transition-colors ${
-                  chatType === 'text'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-700 text-white hover:bg-gray-600'
+                  chatType === "text"
+                    ? "bg-blue-600 text-white"
+                    : "bg-gray-700 text-white hover:bg-gray-600"
                 }`}
               >
                 Text
               </button>
               <span className="text-white flex items-center">or</span>
               <button
-                onClick={() => setChatType('video')}
+                onClick={() => setChatType("video")}
                 className={`px-8 py-3 rounded-lg font-semibold transition-colors ${
-                  chatType === 'video'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-700 text-white hover:bg-gray-600'
+                  chatType === "video"
+                    ? "bg-blue-600 text-white"
+                    : "bg-gray-700 text-white hover:bg-gray-600"
                 }`}
               >
                 Video
@@ -89,10 +90,12 @@ export default function Home() {
             />
           </div>
 
-          {chatType === 'video' && (
+          {chatType === "video" && (
             <div className="bg-gray-700 p-3 rounded-lg mb-6 flex items-center gap-2">
               <Flag className="w-5 h-5 text-orange-500" />
-              <span className="text-white">Video is monitored. Keep it clean !</span>
+              <span className="text-white">
+                Video is monitored. Keep it clean !
+              </span>
             </div>
           )}
 
@@ -105,9 +108,11 @@ export default function Home() {
           </button>
 
           <p className="text-white text-sm mt-6 text-center">
-            Want more relevant chats? Add your interests on Uhmegle to instantly connect with strangers who share your vibe! 
-            Skip the awkward intros and dive into conversations about things you both love. 
-            It's a smarter way to meet new people and why many see Uhmegle as a top Omegle alternative.
+            Want more relevant chats? Add your interests on Meet Stranger to
+            instantly connect with strangers who share your vibe! Skip the
+            awkward intros and dive into conversations about things you both
+            love. It's a smarter way to meet new people and why many see Meet
+            Stranger as a top Omegle alternative.
           </p>
         </div>
       </main>
