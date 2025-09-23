@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Uhmegle Connection Test</title>
+    <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        background: linear-gradient(135deg, #1e293b, #7c3aed, #1e293b);
+        color: white;
+        margin: 0;
+        padding: 20px;
+        min-height: 100vh;
+      }
+      .container {
+        max-width: 800px;
+        margin: 0 auto;
+      }
+      .card {
+        background: rgba(0, 0, 0, 0.3);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 12px;
+        padding: 20px;
+        margin: 20px 0;
+      }
+      .status {
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        margin-right: 8px;
+      }
+      .connected {
+        background: #10b981;
+      }
+      .disconnected {
+        background: #ef4444;
+      }
+      .connecting {
+        background: #f59e0b;
+      }
+      button {
+        background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+        color: white;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 8px;
+        cursor: pointer;
+        margin: 5px;
+        font-weight: 600;
+      }
+      button:hover {
+        background: linear-gradient(135deg, #2563eb, #1e40af);
+      }
+      button:disabled {
+        background: #6b7280;
+        cursor: not-allowed;
+      }
+      .log {
+        background: rgba(0, 0, 0, 0.5);
+        border-radius: 8px;
+        padding: 15px;
+        height: 200px;
+        overflow-y: auto;
+        font-family: monospace;
+        font-size: 12px;
+      }
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 15px;
+        margin: 20px 0;
+      }
+      .stat-card {
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 8px;
+        padding: 15px;
+        text-align: center;
+      }
+      .stat-number {
+        font-size: 24px;
+        font-weight: bold;
+        color: #10b981;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>🔗 Uhmegle Connection Test</h1>
+
+      <div class="card">
+        <h2>Connection Status</h2>
+        <p>
+          <span id="status" class="status disconnected"></span>
+          <span id="statusText">Disconnected</span>
+        </p>
+        <button id="connectBtn" onclick="connect()">Connect to Server</button>
+        <button id="disconnectBtn" onclick="disconnect()" disabled>
+          Disconnect
+        </button>
+        <button onclick="testMatch()" id="testMatchBtn" disabled>
+          Test Match Finding
+        </button>
+      </div>
+
+      <div class="stats">
+        <div class="stat-card">
+          <div class="stat-number" id="onlineCount">0</div>
+          <div>Online Users</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number" id="waitingCount">0</div>
+          <div>Waiting Users</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number" id="roomCount">0</div>
+          <div>Active Rooms</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Connection Log</h2>
+        <div id="log" class="log"></div>
+        <button onclick="clearLog()">Clear Log</button>
+      </div>
+
+      <div class="card">
+        <h2>Testing Instructions</h2>
+        <ol>
+          <li>
+            <strong>Connect:</strong> Click "Connect to Server" to establish
+            connection
+          </li>
+          <li>
+            <strong>Test Match:</strong> Click "Test Match Finding" to simulate
+            looking for a match
+          </li>
+          <li>
+            <strong>Multiple Tabs:</strong> Open this page in multiple tabs to
+            test multiple users
+          </li>
+          <li><strong>Monitor:</strong> Watch the stats update in real-time</li>
+          <li>
+            <strong>Admin Panel:</strong> Open
+            <a
+              href="http://localhost:3000/admin"
+              target="_blank"
+              style="color: #60a5fa"
+              >http://localhost:3000/admin</a
+            >
+            for detailed monitoring
+          </li>
+        </ol>
+      </div>
+    </div>
+
+    <script>
+      let socket = null;
+      let isConnected = false;
+
+      function log(message) {
+        const timestamp = new Date().toLocaleTimeString();
+        const logElement = document.getElementById("log");
+        logElement.innerHTML += `[${timestamp}] ${message}\n`;
+        logElement.scrollTop = logElement.scrollHeight;
+      }
+
+      function clearLog() {
+        document.getElementById("log").innerHTML = "";
+      }
+
+      function updateStatus(status, text) {
+        const statusElement = document.getElementById("status");
+        const statusTextElement = document.getElementById("statusText");
+        statusElement.className = `status ${status}`;
+        statusTextElement.textContent = text;
+      }
+
+      function connect() {
+        if (socket) {
+          socket.disconnect();
+        }
+
+        log("Connecting to server...");
+        updateStatus("connecting", "Connecting...");
+
+        socket = io("http://localhost:3001");
+
+        socket.on("connect", () => {
+          isConnected = true;
+          log("✅ Connected to server");
+          updateStatus("connected", "Connected");
+          document.getElementById("connectBtn").disabled = true;
+          document.getElementById("disconnectBtn").disabled = false;
+          document.getElementById("testMatchBtn").disabled = false;
+        });
+
+        socket.on("disconnect", () => {
+          isConnected = false;
+          log("❌ Disconnected from server");
+          updateStatus("disconnected", "Disconnected");
+          document.getElementById("connectBtn").disabled = false;
+          document.getElementById("disconnectBtn").disabled = true;
+          document.getElementById("testMatchBtn").disabled = true;
+        });
+
+        socket.on("online-count", (count) => {
+          document.getElementById("onlineCount").textContent = count;
+          log(`📊 Online users: ${count}`);
+        });
+
+        socket.on("match-found", (data) => {
+          log(
+            `🎯 Match found! Room: ${data.roomId}, Initiator: ${data.isInitiator}`
+          );
+        });
+
+        socket.on("user-disconnected", () => {
+          log("👋 Other user disconnected");
+        });
+
+        socket.on("connect_error", (error) => {
+          log(`❌ Connection error: ${error.message}`);
+          updateStatus("disconnected", "Connection Failed");
+        });
+      }
+
+      function disconnect() {
+        if (socket) {
+          socket.disconnect();
+          socket = null;
+        }
+      }
+
+      function testMatch() {
+        if (socket && isConnected) {
+          log("🔍 Looking for a match...");
+          socket.emit("find-match", { interests: "testing" });
+        }
+      }
+
+      // Auto-connect on page load
+      window.onload = function () {
+        log("🚀 Connection test page loaded");
+        log('Click "Connect to Server" to begin testing');
+      };
+    </script>
+  </body>
+</html>

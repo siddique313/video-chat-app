@@ -1,12 +1,43 @@
 const { Server } = require("socket.io");
 const http = require("http");
+const https = require("https");
+const fs = require("fs");
 
-const server = http.createServer();
+// Support HTTPS for local dev if certs are available and HTTPS env flag is set
+let server;
+try {
+  const useHttps = process.env.HTTPS === "true";
+  const keyPath = "./localhost-key.pem";
+  const certPath = "./localhost.pem";
+  const hasCerts = fs.existsSync(keyPath) && fs.existsSync(certPath);
+
+  if (useHttps && hasCerts) {
+    const options = {
+      key: fs.readFileSync(keyPath),
+      cert: fs.readFileSync(certPath),
+    };
+    server = https.createServer(options);
+    console.log("Using HTTPS for Socket.IO server");
+  } else {
+    server = http.createServer();
+  }
+} catch (e) {
+  console.warn("Falling back to HTTP server due to HTTPS setup error:", e);
+  server = http.createServer();
+}
+
 const io = new Server(server, {
   cors: {
-    origin: "http://localhost:3000",
+    origin: [
+      "http://localhost:3000",
+      "https://localhost:3000",
+      "http://127.0.0.1:3000",
+      "https://127.0.0.1:3000",
+    ],
     methods: ["GET", "POST"],
+    credentials: true,
   },
+  transports: ["websocket"],
 });
 
 // Store waiting users and active rooms
@@ -19,7 +50,10 @@ io.on("connection", (socket) => {
   console.log("User connected:", socket.id);
   onlineUsers.add(socket.id);
 
-  // Broadcast updated online count
+  // Send current online count to the new user
+  socket.emit("online-count", onlineUsers.size);
+
+  // Broadcast updated online count to all users
   io.emit("online-count", onlineUsers.size);
 
   // Handle finding a match
@@ -132,6 +166,15 @@ io.on("connection", (socket) => {
         .to(roomId)
         .emit("user-typing", { userId: socket.id, isTyping: false });
     }
+  });
+
+  // Handle admin requests
+  socket.on("admin-request-stats", () => {
+    socket.emit("admin-stats", {
+      onlineUsers: onlineUsers.size,
+      waitingUsers: waitingUsers.size,
+      activeRooms: rooms.size,
+    });
   });
 
   // Handle disconnection

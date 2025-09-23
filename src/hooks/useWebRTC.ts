@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState } from "react";
-import { io, Socket } from "socket.io-client";
+import io from "socket.io-client";
 
 interface UseWebRTCOptions {
   roomId?: string;
@@ -12,10 +12,11 @@ interface UseWebRTCOptions {
   }) => void;
   onUserDisconnected?: () => void;
   onUserConnected?: () => void;
+  onOnlineCountUpdate?: (count: number) => void;
 }
 
 export const useWebRTC = (options: UseWebRTCOptions = {}) => {
-  const [socket, setSocket] = useState<Socket | null>(null);
+  const [socket, setSocket] = useState<ReturnType<typeof io> | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -62,6 +63,7 @@ export const useWebRTC = (options: UseWebRTCOptions = {}) => {
       setIsConnected(state === "connected");
 
       if (state === "failed" || state === "disconnected") {
+        setIsConnected(false);
         // Attempt to reconnect after a delay
         if (reconnectTimeoutRef.current) {
           clearTimeout(reconnectTimeoutRef.current);
@@ -111,16 +113,30 @@ export const useWebRTC = (options: UseWebRTCOptions = {}) => {
   };
 
   const connect = async (roomId?: string, data?: { interests?: string }) => {
-    if (isConnecting) return;
+    if (isConnecting || isConnected) return;
 
     setIsConnecting(true);
     setError(null);
 
     try {
-      // Initialize socket connection
-      const newSocket = io(
-        process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3001"
-      );
+      // Clean up any existing connection first
+      if (socket) {
+        socket.removeAllListeners();
+        socket.disconnect();
+      }
+
+      // Initialize socket connection with dynamic URL and WS transport
+      const socketUrl =
+        process.env.NEXT_PUBLIC_SOCKET_URL ||
+        `${window.location.protocol}//${window.location.hostname}:3001`;
+
+      const newSocket = io(socketUrl, {
+        transports: ["websocket"],
+        withCredentials: true,
+        reconnection: true,
+        reconnectionAttempts: 5,
+        timeout: 10000,
+      });
       setSocket(newSocket);
 
       // Initialize peer connection
@@ -150,18 +166,32 @@ export const useWebRTC = (options: UseWebRTCOptions = {}) => {
       );
 
       newSocket.on("offer", async (offer: RTCSessionDescriptionInit) => {
-        await peerConnection.setRemoteDescription(offer);
-        const answer = await peerConnection.createAnswer();
-        await peerConnection.setLocalDescription(answer);
-        newSocket.emit("answer", answer);
+        try {
+          await peerConnection.setRemoteDescription(offer);
+          const answer = await peerConnection.createAnswer();
+          await peerConnection.setLocalDescription(answer);
+          newSocket.emit("answer", answer);
+        } catch (err) {
+          console.error("Error handling offer:", err);
+          setError("Failed to handle connection offer");
+        }
       });
 
       newSocket.on("answer", async (answer: RTCSessionDescriptionInit) => {
-        await peerConnection.setRemoteDescription(answer);
+        try {
+          await peerConnection.setRemoteDescription(answer);
+        } catch (err) {
+          console.error("Error handling answer:", err);
+          setError("Failed to handle connection answer");
+        }
       });
 
       newSocket.on("ice-candidate", async (candidate: RTCIceCandidateInit) => {
-        await peerConnection.addIceCandidate(candidate);
+        try {
+          await peerConnection.addIceCandidate(candidate);
+        } catch (err) {
+          console.error("Error adding ICE candidate:", err);
+        }
       });
 
       newSocket.on(
@@ -186,15 +216,30 @@ export const useWebRTC = (options: UseWebRTCOptions = {}) => {
         setIsConnecting(false);
       });
 
-      newSocket.on("connect_error", (err) => {
+      newSocket.on("connect_error", (err: any) => {
         console.error("Connection error:", err);
         setError("Failed to connect to server");
         setIsConnecting(false);
+      });
+
+      newSocket.on("online-count", (count: number) => {
+        options.onOnlineCountUpdate?.(count);
       });
     } catch (err) {
       setError("Failed to connect");
       setIsConnecting(false);
       console.error("Connection error:", err);
+
+      // Clean up on error
+      if (socket) {
+        socket.removeAllListeners();
+        socket.disconnect();
+        setSocket(null);
+      }
+      if (peerConnectionRef.current) {
+        peerConnectionRef.current.close();
+        peerConnectionRef.current = null;
+      }
     }
   };
 
@@ -221,12 +266,17 @@ export const useWebRTC = (options: UseWebRTCOptions = {}) => {
       localStreamRef.current = null;
     }
 
+    if (remoteStreamRef.current) {
+      remoteStreamRef.current = null;
+    }
+
     if (peerConnectionRef.current) {
       peerConnectionRef.current.close();
       peerConnectionRef.current = null;
     }
 
     if (socket) {
+      socket.removeAllListeners();
       socket.disconnect();
       setSocket(null);
     }
@@ -249,6 +299,78 @@ export const useWebRTC = (options: UseWebRTCOptions = {}) => {
     };
   }, []);
 
+  const requestPermissions = async () => {
+    try {
+      // Check if we're on HTTPS or localhost
+      const isSecure =
+        window.location.protocol === "https:" ||
+        window.location.hostname === "localhost" ||
+        window.location.hostname === "127.0.0.1";
+
+      if (!isSecure) {
+        const errorMsg = `WebRTC requires HTTPS for network access. Current URL: ${window.location.href}. Please use HTTPS or access via localhost.`;
+        setError(errorMsg);
+        throw new Error(errorMsg);
+      }
+
+      // Check if getUserMedia is supported
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        const errorMsg = "getUserMedia is not supported in this browser";
+        setError(errorMsg);
+        throw new Error(errorMsg);
+      }
+
+      // Request both camera & microphone with specific constraints for better Mac compatibility
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          frameRate: { ideal: 30 },
+          facingMode: "user",
+        },
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+
+      // Store the stream for later use
+      localStreamRef.current = stream;
+
+      // Attach stream to your local video ref
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = stream;
+      }
+
+      console.log("Camera & mic access granted");
+      setError(null);
+      return stream;
+    } catch (err: any) {
+      console.error("Camera/Microphone permission denied:", err);
+
+      let errorMessage = "Camera/Microphone access denied";
+
+      if (err.name === "NotAllowedError") {
+        errorMessage =
+          "Camera/Microphone permission denied. Please allow access and refresh the page.";
+      } else if (err.name === "NotFoundError") {
+        errorMessage = "No camera/microphone found. Please check your devices.";
+      } else if (err.name === "NotReadableError") {
+        errorMessage =
+          "Camera/Microphone is being used by another application.";
+      } else if (err.name === "OverconstrainedError") {
+        errorMessage = "Camera/Microphone constraints cannot be satisfied.";
+      } else if (err.name === "SecurityError") {
+        errorMessage =
+          "Camera/Microphone access blocked due to security restrictions.";
+      }
+
+      setError(errorMessage);
+      throw err;
+    }
+  };
+
   return {
     localVideoRef,
     remoteVideoRef,
@@ -259,5 +381,6 @@ export const useWebRTC = (options: UseWebRTCOptions = {}) => {
     connect,
     disconnect,
     sendMessage,
+    requestPermissions,
   };
 };
