@@ -1,14 +1,14 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { io } from "socket.io-client";
+import { useState, useEffect, useCallback } from "react";
+import io from "socket.io-client";
 
 export default function AdminPage() {
   const [onlineUsers, setOnlineUsers] = useState(0);
-  const [waitingUsers, setWaitingUsers] = useState(0);
-  const [activeRooms, setActiveRooms] = useState(0);
+  const [waitingUsers] = useState(0);
+  const [activeRooms] = useState(0);
   const [connectionLog, setConnectionLog] = useState<string[]>([]);
-  const [socket, setSocket] = useState<any>(null);
+  const [, setSocket] = useState<any>(null);
 
   useEffect(() => {
     // Connect to the server
@@ -37,13 +37,13 @@ export default function AdminPage() {
     };
   }, []);
 
-  const addLog = (message: string) => {
+  const addLog = useCallback((message: string) => {
     const timestamp = new Date().toLocaleTimeString();
     setConnectionLog((prev) => [
       `[${timestamp}] ${message}`,
       ...prev.slice(0, 19),
     ]);
-  };
+  }, []);
 
   const clearLogs = () => {
     setConnectionLog([]);
@@ -155,9 +155,9 @@ export default function AdminPage() {
                     http://localhost:3000/chat?type=video
                   </code>
                 </li>
-                <li>• Click "Start" button to begin matching</li>
-                <li>• Watch the online count increase in this admin panel</li>
-                <li>• Open another tab and repeat to see matching in action</li>
+                <li> Click Start button to begin matching</li>
+                <li> Watch the online count increase in this admin panel</li>
+                <li> Open another tab and repeat to see matching in action</li>
               </ul>
             </div>
             <div>
