@@ -4,17 +4,22 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
+    "dev:https": "next dev --turbopack --experimental-https --experimental-https-key ./localhost-key.pem --experimental-https-cert ./localhost.pem",
     "build": "next build --turbopack",
     "start": "next start",
     "lint": "eslint",
     "server": "node server.js",
-    "dev:full": "concurrently \"npm run server\" \"npm run dev\""
+    "dev:full": "concurrently \"npm run server\" \"npm run dev\"",
+    "dev:full:https": "concurrently \"npm run server\" \"npm run dev:https\"",
+    "setup:https": "setup-https.bat",
+    "test:webrtc": "echo 'Open https://localhost:3000/test-webrtc to test WebRTC functionality'"
   },
   "dependencies": {
     "@types/simple-peer": "^9.11.8",
     "@types/socket.io-client": "^1.4.36",
     "@types/uuid": "^10.0.0",
     "lucide-react": "^0.544.0",
+    "net": "^1.0.2",
     "next": "15.5.3",
     "react": "19.1.0",
     "react-dom": "19.1.0",

@@ -5,7 +5,6 @@ import { useSearchParams, useRouter } from "next/navigation";
 import {
   MessageCircle,
   Sun,
-  Flag,
   Send,
   Square,
   Image as ImageIcon,
@@ -13,6 +12,8 @@ import {
   MicOff,
   Video,
   VideoOff,
+  PhoneMissed,
+  Share,
 } from "lucide-react";
 import { useWebRTC } from "../../hooks/useWebRTC";
 
@@ -62,6 +63,7 @@ export default function ChatPage() {
     connect,
     disconnect,
     sendMessage: sendWebRTCMessage,
+    requestPermissions,
   } = useWebRTC({
     onRemoteStream: (stream) => {
       console.log("Remote stream received");
@@ -82,10 +84,14 @@ export default function ChatPage() {
         },
       ]);
     },
+    onOnlineCountUpdate: (count) => {
+      setOnlineCount(count);
+    },
   });
 
   // Auto scroll to bottom of messages
   useEffect(() => {
+    requestPermissions();
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
@@ -231,7 +237,7 @@ export default function ChatPage() {
             <MessageCircle className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
           </div>
           <h1 className="text-lg sm:text-2xl font-bold bg-gradient-to-r from-orange-400 to-pink-500 bg-clip-text text-transparent">
-            Meet Stranger
+            Meet Stranger.com
           </h1>
         </div>
         <div className="flex items-center gap-2 sm:gap-4">
@@ -255,110 +261,162 @@ export default function ChatPage() {
         </div>
       </header>
 
-      <div className="flex flex-1 relative z-10 flex-col lg:flex-row">
+      <div className="flex flex-1 relative z-10 flex-col xl:flex-row">
         {/* Video Section */}
-        <div className="flex-1 flex flex-col p-2 sm:p-4 gap-2 sm:gap-4">
-          {/* Remote User Video (Top) */}
-          <div className="flex-1 bg-gradient-to-br from-gray-800 to-gray-900 relative rounded-xl lg:rounded-2xl overflow-hidden shadow-2xl border border-white/10 min-h-[200px] sm:min-h-[300px]">
-            {isConnected ? (
-              <video
-                ref={remoteVideoRef}
-                autoPlay
-                playsInline
-                className="w-full h-full object-cover"
-              />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-800 to-gray-900">
-                <div className="text-center p-4">
-                  <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full mx-auto mb-4 sm:mb-6 flex items-center justify-center shadow-lg shadow-blue-500/25 animate-pulse">
-                    <MessageCircle className="w-8 h-8 sm:w-10 sm:h-10 text-white" />
+        <div className="flex-1 flex flex-col p-4 sm:p-6 gap-4 sm:gap-6 min-h-0 bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
+          {/* Main Video Container */}
+          <div className="flex-1 flex flex-col lg:flex-row gap-4 sm:gap-6 min-h-0">
+            {/* Remote User Video (Main) */}
+            <div className="flex-1 relative rounded-2xl lg:rounded-3xl overflow-hidden shadow-2xl border border-white/10 bg-gradient-to-br from-gray-900 via-blue-900/20 to-purple-900/20 min-h-[300px] sm:min-h-[400px]">
+              {isConnected ? (
+                <>
+                  <video
+                    ref={remoteVideoRef}
+                    autoPlay
+                    playsInline
+                    className="w-full h-full object-cover"
+                  />
+                  {/* Connection Status Indicator */}
+                  <div className="absolute top-4 left-4 flex items-center gap-2">
+                    <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse shadow-lg shadow-green-400/50"></div>
+                    <span className="text-xs font-medium text-white/80 bg-black/30 px-2 py-1 rounded-full backdrop-blur-sm">
+                      Connected
+                    </span>
                   </div>
-                  <p className="text-gray-300 text-sm sm:text-lg font-medium">
-                    Waiting for connection...
-                  </p>
-                  <div className="flex justify-center mt-3 sm:mt-4">
-                    <div className="flex gap-1">
-                      <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"></div>
-                      <div
-                        className="w-2 h-2 bg-purple-500 rounded-full animate-bounce"
-                        style={{ animationDelay: "0.1s" }}
-                      ></div>
-                      <div
-                        className="w-2 h-2 bg-pink-500 rounded-full animate-bounce"
-                        style={{ animationDelay: "0.2s" }}
-                      ></div>
+                </>
+              ) : (
+                <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-900/80 to-gray-800/80">
+                  <div className="text-center p-6 max-w-md">
+                    <div className="relative mb-6">
+                      <div className="w-24 h-24 sm:w-32 sm:h-32 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 rounded-full mx-auto mb-4 flex items-center justify-center shadow-2xl shadow-blue-500/30 animate-pulse">
+                        <MessageCircle className="w-10 h-10 sm:w-12 sm:h-12 text-white" />
+                      </div>
+                      <div className="absolute -top-2 -right-2">
+                        <div className="w-8 h-8 bg-gradient-to-r from-green-400 to-blue-500 rounded-full flex items-center justify-center shadow-lg">
+                          <div className="w-3 h-3 bg-white rounded-full animate-ping"></div>
+                        </div>
+                      </div>
+                    </div>
+                    <h3 className="text-white text-lg sm:text-xl font-semibold mb-2">
+                      Looking for a stranger...
+                    </h3>
+                    <p className="text-gray-300 text-sm sm:text-base mb-4">
+                      We're finding someone interesting for you to chat with
+                    </p>
+                    <div className="flex justify-center">
+                      <div className="flex gap-2">
+                        {[0, 0.1, 0.2].map((delay) => (
+                          <div
+                            key={delay}
+                            className="w-2 h-2 bg-gradient-to-r from-blue-400 to-purple-500 rounded-full animate-bounce"
+                            style={{ animationDelay: `${delay}s` }}
+                          ></div>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 </div>
+              )}
+
+              {/* Brand Badge */}
+              <div className="absolute bottom-4 left-4 bg-black/40 backdrop-blur-md rounded-xl px-3 py-2 border border-white/10">
+                <span className="text-orange-400 font-bold text-sm bg-gradient-to-r from-orange-400 to-amber-400 bg-clip-text text-transparent">
+                  MeetStranger.com
+                </span>
               </div>
-            )}
-            <div className="absolute bottom-2 sm:bottom-4 left-2 sm:left-4 bg-black/50 backdrop-blur-sm rounded-lg px-2 sm:px-3 py-1">
-              <span className="text-orange-400 font-semibold text-xs sm:text-sm">
-                Meet Stranger.com
-              </span>
+
+              {/* Action Buttons */}
+              <div className="absolute bottom-4 right-4 flex gap-2">
+                <button className="w-10 h-10 bg-black/40 backdrop-blur-md rounded-full flex items-center justify-center hover:scale-110 transition-all duration-200 border border-white/10 hover:border-white/30 shadow-lg">
+                  <span className="text-white font-bold text-sm">P</span>
+                </button>
+                <button className="w-10 h-10 bg-black/40 backdrop-blur-md rounded-full flex items-center justify-center hover:scale-110 transition-all duration-200 border border-white/10 hover:border-white/30 shadow-lg">
+                  <Share className="w-5 h-5 text-white" />
+                </button>
+              </div>
             </div>
-            <div className="absolute bottom-2 sm:bottom-4 right-2 sm:right-4">
-              <div className="w-6 h-6 sm:w-8 sm:h-8 bg-gradient-to-r from-red-500 to-pink-500 rounded-full flex items-center justify-center cursor-pointer hover:scale-110 transition-all duration-200 shadow-lg shadow-red-500/25">
-                <span className="text-white text-xs font-bold">P</span>
+
+            {/* Local User Video (Sidebar) */}
+            <div className="w-full lg:w-80 xl:w-96 h-48 sm:h-56 lg:h-auto relative rounded-2xl overflow-hidden shadow-xl border border-white/10 bg-gradient-to-br from-gray-800 to-gray-900">
+              <video
+                ref={localVideoRef}
+                autoPlay
+                playsInline
+                muted
+                className="w-full h-full object-cover"
+              />
+
+              {/* Video Off Overlay */}
+              {isVideoOff && (
+                <div className="absolute inset-0 bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center">
+                  <div className="text-center">
+                    <VideoOff className="w-12 h-12 sm:w-16 sm:h-16 text-gray-400/60 mb-2" />
+                    <p className="text-gray-400/80 text-sm">Camera off</p>
+                  </div>
+                </div>
+              )}
+
+              {/* User Status Badge */}
+              <div className="absolute top-3 left-3 bg-black/50 backdrop-blur-sm rounded-full px-2 py-1">
+                <span className="text-white text-xs font-medium">You</span>
+              </div>
+
+              {/* Video Controls */}
+              <div className="absolute bottom-3 left-1/2 transform -translate-x-1/2 flex gap-2 bg-black/50 backdrop-blur-md rounded-full p-1 border border-white/10">
+                <button
+                  onClick={toggleMute}
+                  className={`p-2 rounded-full transition-all duration-200 hover:scale-110 ${
+                    isMuted
+                      ? "bg-red-500 hover:bg-red-600 shadow-lg shadow-red-500/50"
+                      : "bg-white/20 hover:bg-white/30"
+                  }`}
+                >
+                  {isMuted ? (
+                    <MicOff className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+                  ) : (
+                    <Mic className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+                  )}
+                </button>
+
+                <button
+                  onClick={toggleVideo}
+                  className={`p-2 rounded-full transition-all duration-200 hover:scale-110 ${
+                    isVideoOff
+                      ? "bg-red-500 hover:bg-red-600 shadow-lg shadow-red-500/50"
+                      : "bg-white/20 hover:bg-white/30"
+                  }`}
+                >
+                  {isVideoOff ? (
+                    <VideoOff className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+                  ) : (
+                    <Video className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+                  )}
+                </button>
+
+                <button className="p-2 rounded-full bg-white/20 hover:bg-white/30 transition-all duration-200 hover:scale-110">
+                  <PhoneMissed className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+                </button>
               </div>
             </div>
           </div>
 
-          {/* Local User Video (Bottom) */}
-          <div className="h-32 sm:h-48 lg:h-64 bg-gradient-to-br from-gray-800 to-gray-900 relative rounded-xl lg:rounded-2xl overflow-hidden shadow-xl border border-white/10">
-            <video
-              ref={localVideoRef}
-              autoPlay
-              playsInline
-              muted
-              className="w-full h-full object-cover"
-            />
-            {isVideoOff && (
-              <div className="absolute inset-0 bg-gray-800 flex items-center justify-center">
-                <VideoOff className="w-8 h-8 sm:w-12 sm:h-12 lg:w-16 lg:h-16 text-gray-400" />
-              </div>
-            )}
-
-            {/* Video Controls */}
-            <div className="absolute bottom-2 sm:bottom-4 left-1/2 transform -translate-x-1/2 flex gap-1 sm:gap-2">
-              <button
-                onClick={toggleMute}
-                className={`p-1.5 sm:p-2 rounded-full transition-all duration-200 hover:scale-110 ${
-                  isMuted
-                    ? "bg-red-600 hover:bg-red-700 shadow-lg shadow-red-500/25"
-                    : "bg-gray-700/80 hover:bg-gray-600/80 backdrop-blur-sm"
-                }`}
-              >
-                {isMuted ? (
-                  <MicOff className="w-3 h-3 sm:w-4 sm:h-4 text-white" />
-                ) : (
-                  <Mic className="w-3 h-3 sm:w-4 sm:h-4 text-white" />
-                )}
-              </button>
-              <button
-                onClick={toggleVideo}
-                className={`p-1.5 sm:p-2 rounded-full transition-all duration-200 hover:scale-110 ${
-                  isVideoOff
-                    ? "bg-red-600 hover:bg-red-700 shadow-lg shadow-red-500/25"
-                    : "bg-gray-700/80 hover:bg-gray-600/80 backdrop-blur-sm"
-                }`}
-              >
-                {isVideoOff ? (
-                  <VideoOff className="w-3 h-3 sm:w-4 sm:h-4 text-white" />
-                ) : (
-                  <Video className="w-3 h-3 sm:w-4 sm:h-4 text-white" />
-                )}
-              </button>
-            </div>
+          {/* Additional Controls */}
+          <div className="flex justify-center gap-4">
+            <button className="px-6 py-3 bg-white/10 hover:bg-white/20 backdrop-blur-md rounded-full text-white font-medium transition-all duration-200 border border-white/10 hover:border-white/30">
+              Next Stranger
+            </button>
+            <button className="px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 rounded-full text-white font-medium transition-all duration-200 shadow-lg shadow-purple-500/25">
+              Add Friend
+            </button>
           </div>
         </div>
 
         {/* Chat Section */}
-        <div className="w-full lg:w-80 xl:w-96 bg-black/20 backdrop-blur-md border-t lg:border-t-0 lg:border-l border-white/10 flex flex-col max-h-[50vh] lg:max-h-none">
+        <div className="w-full xl:w-80 2xl:w-96 bg-black/20 backdrop-blur-md border-t xl:border-t-0 xl:border-l border-white/10 flex flex-col h-[40vh] xl:h-auto xl:max-h-none">
           {/* Welcome and Rules */}
           <div className="p-3 sm:p-4 border-b border-white/10">
             <h2 className="text-white text-base sm:text-lg mb-3 sm:mb-4 font-semibold">
-              Welcome to Meet Stranger.
+              Welcome to Uhmegle.
             </h2>
 
             <div className="bg-gradient-to-r from-red-600 to-red-700 text-white p-2 sm:p-3 rounded-lg mb-3 sm:mb-4 flex items-center gap-2 shadow-lg">
@@ -482,8 +540,8 @@ export default function ChatPage() {
               <div className="space-y-2 sm:space-y-3">
                 {/* GIF Picker */}
                 {showGifPicker && (
-                  <div className="bg-gray-800/80 backdrop-blur-sm p-2 sm:p-3 rounded-lg border border-white/10">
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-1 sm:gap-2">
+                  <div className="bg-gray-800/80 backdrop-blur-sm p-3 rounded-lg border border-white/10">
+                    <div className="grid grid-cols-3 gap-2">
                       {sampleGifs.map((gif, index) => (
                         <button
                           key={index}
@@ -501,39 +559,36 @@ export default function ChatPage() {
                   </div>
                 )}
 
-                <div className="flex flex-col sm:flex-row gap-2">
+                <div className="space-y-2">
                   <button
                     onClick={handleDisconnect}
-                    className="bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-semibold py-2 px-3 sm:px-4 rounded-lg transition-all duration-200 flex items-center justify-center gap-2 shadow-lg shadow-red-500/25 hover:shadow-red-500/40"
+                    className="w-full bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-semibold py-2 px-4 rounded-lg transition-all duration-200 flex items-center justify-center gap-2 shadow-lg shadow-red-500/25 hover:shadow-red-500/40"
                   >
-                    <Square className="w-3 h-3 sm:w-4 sm:h-4" />
-                    <span className="text-sm sm:text-base">Stop</span>
+                    <Square className="w-4 h-4" />
+                    <span className="text-sm">Stop</span>
                     <span className="text-xs text-gray-300">Esc</span>
                   </button>
-                  <div className="flex gap-1 sm:gap-2 flex-1">
+                  <div className="flex gap-2">
                     <input
                       type="text"
                       value={message}
                       onChange={(e) => handleTyping(e.target.value)}
                       onKeyPress={handleKeyPress}
                       placeholder="Type your message..."
-                      className="flex-1 p-2 sm:p-3 bg-gray-800/80 backdrop-blur-sm text-white rounded-lg border border-white/20 focus:border-blue-500 focus:outline-none text-sm sm:text-base"
+                      className="flex-1 p-3 bg-gray-800/80 backdrop-blur-sm text-white rounded-lg border border-white/20 focus:border-blue-500 focus:outline-none text-sm"
                     />
                     <button
                       onClick={() => setShowGifPicker(!showGifPicker)}
-                      className="bg-gray-700/80 hover:bg-gray-600/80 backdrop-blur-sm text-white p-2 rounded-lg transition-all duration-200 hover:scale-105"
+                      className="bg-gray-700/80 hover:bg-gray-600/80 backdrop-blur-sm text-white p-3 rounded-lg transition-all duration-200 hover:scale-105"
                     >
                       <ImageIcon className="w-4 h-4" />
                     </button>
                     <button
                       onClick={handleSendMessage}
-                      className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-semibold py-2 px-3 sm:px-4 rounded-lg transition-all duration-200 flex items-center justify-center gap-1 sm:gap-2 shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40"
+                      className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-semibold py-3 px-4 rounded-lg transition-all duration-200 flex items-center justify-center gap-2 shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40"
                     >
-                      <Send className="w-3 h-3 sm:w-4 sm:h-4" />
-                      <span className="hidden sm:inline text-sm">Send</span>
-                      <span className="text-xs text-gray-300 hidden sm:inline">
-                        Enter
-                      </span>
+                      <Send className="w-4 h-4" />
+                      <span className="text-sm">Send</span>
                     </button>
                   </div>
                 </div>
