@@ -20,7 +20,6 @@ import { useWebRTC } from "../../hooks/useWebRTC";
 export default function ChatPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const chatType = searchParams.get("type") || "video";
   const interests = searchParams.get("interests") || "";
 
   const [message, setMessage] = useState("");
@@ -65,9 +64,6 @@ export default function ChatPage() {
     sendMessage: sendWebRTCMessage,
     requestPermissions,
   } = useWebRTC({
-    onRemoteStream: (stream) => {
-      console.log("Remote stream received");
-    },
     onConnectionStateChange: (state) => {
       console.log("Connection state:", state);
     },
@@ -320,7 +316,7 @@ export default function ChatPage() {
 
               {/* Brand Badge */}
               <div className="absolute bottom-4 left-4 bg-black/40 backdrop-blur-md rounded-xl px-3 py-2 border border-white/10">
-                <span className="text-orange-400 font-bold text-sm bg-gradient-to-r from-orange-400 to-amber-400 bg-clip-text text-transparent">
+                <span className="font-bold text-sm bg-gradient-to-r from-orange-400 to-amber-400 bg-clip-text text-transparent">
                   MeetStranger.com
                 </span>
               </div>
@@ -439,7 +435,7 @@ export default function ChatPage() {
             {!isStarted && !isConnecting && (
               <div className="text-center text-gray-400 p-2">
                 <p className="mb-2 sm:mb-4 text-sm sm:text-base">
-                  Click "Start" to begin chatting
+                  Click &quot;Start&quot; to begin chatting
                 </p>
                 {interests && (
                   <p className="text-xs sm:text-sm">Interests: {interests}</p>

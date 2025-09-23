@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState } from "react";
+import { useRef, useEffect, useState, useCallback } from "react";
 import io from "socket.io-client";
 
 interface UseWebRTCOptions {
@@ -16,7 +16,7 @@ interface UseWebRTCOptions {
 }
 
 export const useWebRTC = (options: UseWebRTCOptions = {}) => {
-  const [socket, setSocket] = useState<ReturnType<typeof io> | null>(null);
+  const [socket, setSocket] = useState<SocketIOClient.Socket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -132,7 +132,6 @@ export const useWebRTC = (options: UseWebRTCOptions = {}) => {
 
       const newSocket = io(socketUrl, {
         transports: ["websocket"],
-        withCredentials: true,
         reconnection: true,
         reconnectionAttempts: 5,
         timeout: 10000,
@@ -216,7 +215,7 @@ export const useWebRTC = (options: UseWebRTCOptions = {}) => {
         setIsConnecting(false);
       });
 
-      newSocket.on("connect_error", (err: any) => {
+      newSocket.on("connect_error", (err: unknown) => {
         console.error("Connection error:", err);
         setError("Failed to connect to server");
         setIsConnecting(false);
@@ -255,7 +254,7 @@ export const useWebRTC = (options: UseWebRTCOptions = {}) => {
     }
   };
 
-  const disconnect = () => {
+  const disconnect = useCallback(() => {
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
@@ -285,7 +284,7 @@ export const useWebRTC = (options: UseWebRTCOptions = {}) => {
     setIsConnecting(false);
     setError(null);
     setConnectionState("disconnected");
-  };
+  }, [socket]);
 
   const sendMessage = (message: string) => {
     if (socket && isConnected) {
@@ -297,7 +296,7 @@ export const useWebRTC = (options: UseWebRTCOptions = {}) => {
     return () => {
       disconnect();
     };
-  }, []);
+  }, [disconnect]);
 
   const requestPermissions = async () => {
     try {
@@ -346,22 +345,26 @@ export const useWebRTC = (options: UseWebRTCOptions = {}) => {
       console.log("Camera & mic access granted");
       setError(null);
       return stream;
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Camera/Microphone permission denied:", err);
 
       let errorMessage = "Camera/Microphone access denied";
 
-      if (err.name === "NotAllowedError") {
+      const errorObject = err as
+        | { name?: string; message?: string }
+        | undefined;
+
+      if (errorObject?.name === "NotAllowedError") {
         errorMessage =
           "Camera/Microphone permission denied. Please allow access and refresh the page.";
-      } else if (err.name === "NotFoundError") {
+      } else if (errorObject?.name === "NotFoundError") {
         errorMessage = "No camera/microphone found. Please check your devices.";
-      } else if (err.name === "NotReadableError") {
+      } else if (errorObject?.name === "NotReadableError") {
         errorMessage =
           "Camera/Microphone is being used by another application.";
-      } else if (err.name === "OverconstrainedError") {
+      } else if (errorObject?.name === "OverconstrainedError") {
         errorMessage = "Camera/Microphone constraints cannot be satisfied.";
-      } else if (err.name === "SecurityError") {
+      } else if (errorObject?.name === "SecurityError") {
         errorMessage =
           "Camera/Microphone access blocked due to security restrictions.";
       }

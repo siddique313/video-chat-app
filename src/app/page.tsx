@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { MessageCircle, Video, Sun, Flag } from "lucide-react";
+import { MessageCircle, Sun, Flag } from "lucide-react";
 
 export default function Home() {
   const [interests, setInterests] = useState("");
@@ -111,8 +111,8 @@ export default function Home() {
             Want more relevant chats? Add your interests on Meet Stranger to
             instantly connect with strangers who share your vibe! Skip the
             awkward intros and dive into conversations about things you both
-            love. It's a smarter way to meet new people and why many see Meet
-            Stranger as a top Omegle alternative.
+            love. It&apos;s a smarter way to meet new people and why many see
+            Meet Stranger as a top Omegle alternative.
           </p>
         </div>
       </main>

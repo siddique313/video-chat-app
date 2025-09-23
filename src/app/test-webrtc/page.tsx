@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useWebRTC } from "../../hooks/useWebRTC";
 
 export default function WebRTCTestPage() {
@@ -42,12 +42,12 @@ export default function WebRTCTestPage() {
     },
   });
 
-  const addTestResult = (result: string) => {
+  const addTestResult = useCallback((result: string) => {
     const timestamp = new Date().toLocaleTimeString();
     setTestResults((prev) => [...prev, `[${timestamp}] ${result}`]);
-  };
+  }, []);
 
-  const checkPermissions = async () => {
+  const checkPermissions = useCallback(async () => {
     try {
       addTestResult("🔍 Checking camera and microphone permissions...");
 
@@ -72,10 +72,10 @@ export default function WebRTCTestPage() {
       } else {
         addTestResult("⚠️ Permissions API not available in this browser");
       }
-    } catch (err) {
-      addTestResult(`❌ Error checking permissions: ${err}`);
+    } catch (err: unknown) {
+      addTestResult(`❌ Error checking permissions: ${String(err)}`);
     }
-  };
+  }, [addTestResult]);
 
   const testMediaDevices = async () => {
     try {
@@ -144,25 +144,28 @@ export default function WebRTCTestPage() {
       // Stop the stream
       stream.getTracks().forEach((track) => track.stop());
       addTestResult("🛑 Test stream stopped");
-    } catch (err: any) {
-      addTestResult(`❌ getUserMedia failed: ${err.name} - ${err.message}`);
+    } catch (err: unknown) {
+      const e = err as { name?: string; message?: string } | undefined;
+      addTestResult(
+        `❌ getUserMedia failed: ${e?.name ?? "Unknown"} - ${e?.message ?? ""}`
+      );
 
-      if (err.name === "NotAllowedError") {
+      if (e?.name === "NotAllowedError") {
         addTestResult(
           "🚫 Permission denied - user needs to grant camera/microphone access"
         );
         addTestResult(
           "💡 Solution: Click the camera/microphone icon in the address bar and allow access"
         );
-      } else if (err.name === "NotFoundError") {
+      } else if (e?.name === "NotFoundError") {
         addTestResult(
           "🔍 No camera/microphone found - check if devices are connected"
         );
-      } else if (err.name === "NotReadableError") {
+      } else if (e?.name === "NotReadableError") {
         addTestResult(
           "⚠️ Camera/microphone is being used by another application"
         );
-      } else if (err.name === "OverconstrainedError") {
+      } else if (e?.name === "OverconstrainedError") {
         addTestResult("⚙️ Camera/microphone constraints cannot be satisfied");
       }
     }
@@ -225,7 +228,7 @@ export default function WebRTCTestPage() {
 
   useEffect(() => {
     checkPermissions();
-  }, []);
+  }, [checkPermissions]);
 
   return (
     <div className="min-h-screen bg-gray-900 text-white p-6">
@@ -360,7 +363,7 @@ export default function WebRTCTestPage() {
           <div className="bg-gray-900 p-4 rounded-lg max-h-96 overflow-y-auto font-mono text-sm">
             {testResults.length === 0 ? (
               <p className="text-gray-400">
-                No test results yet. Click "Run Full Test" to start.
+                No test results yet. Click &quot;Run Full Test&quot; to start.
               </p>
             ) : (
               testResults.map((result, index) => (
@@ -378,7 +381,9 @@ export default function WebRTCTestPage() {
             🍎 Mac-Specific Instructions
           </h3>
           <div className="text-sm space-y-2">
-            <p>If you're getting camera/microphone permission denied on Mac:</p>
+            <p>
+              If you&#39;re getting camera/microphone permission denied on Mac:
+            </p>
             <ol className="list-decimal list-inside space-y-1 ml-4">
               <li>
                 Go to <strong>System Preferences</strong> →{" "}
@@ -393,7 +398,7 @@ export default function WebRTCTestPage() {
                 checked
               </li>
               <li>
-                If your browser isn't listed, try refreshing the page and
+                If your browser isn&#39;t listed, try refreshing the page and
                 granting permission when prompted
               </li>
               <li>Restart your browser if permissions were just granted</li>
