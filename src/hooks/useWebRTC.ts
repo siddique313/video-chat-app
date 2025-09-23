@@ -16,7 +16,7 @@ interface UseWebRTCOptions {
 }
 
 export const useWebRTC = (options: UseWebRTCOptions = {}) => {
-  const [socket, setSocket] = useState<SocketIOClient.Socket | null>(null);
+  const [socket, setSocket] = useState<ReturnType<typeof io> | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
