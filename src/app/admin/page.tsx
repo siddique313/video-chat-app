@@ -8,7 +8,15 @@ export default function AdminPage() {
   const [waitingUsers] = useState(0);
   const [activeRooms] = useState(0);
   const [connectionLog, setConnectionLog] = useState<string[]>([]);
-  const [, setSocket] = useState<any>(null);
+  const [, setSocket] = useState<ReturnType<typeof io> | null>(null);
+
+  const addLog = useCallback((message: string) => {
+    const timestamp = new Date().toLocaleTimeString();
+    setConnectionLog((prev) => [
+      `[${timestamp}] ${message}`,
+      ...prev.slice(0, 19),
+    ]);
+  }, []);
 
   useEffect(() => {
     // Connect to the server
@@ -35,15 +43,7 @@ export default function AdminPage() {
     return () => {
       newSocket.disconnect();
     };
-  }, []);
-
-  const addLog = useCallback((message: string) => {
-    const timestamp = new Date().toLocaleTimeString();
-    setConnectionLog((prev) => [
-      `[${timestamp}] ${message}`,
-      ...prev.slice(0, 19),
-    ]);
-  }, []);
+  }, [addLog]);
 
   const clearLogs = () => {
     setConnectionLog([]);

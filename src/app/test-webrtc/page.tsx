@@ -22,7 +22,7 @@ export default function WebRTCTestPage() {
     requestPermissions,
     connectionState,
   } = useWebRTC({
-    onRemoteStream: (stream) => {
+    onRemoteStream: () => {
       addTestResult("✅ Remote stream received successfully");
     },
     onConnectionStateChange: (state) => {

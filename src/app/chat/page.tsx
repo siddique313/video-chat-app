@@ -16,8 +16,10 @@ import {
   Share,
 } from "lucide-react";
 import { useWebRTC } from "../../hooks/useWebRTC";
+import Image from "next/image";
+import { Suspense } from "react";
 
-export default function ChatPage() {
+function ChatPageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const interests = searchParams.get("interests") || "";
@@ -36,7 +38,6 @@ export default function ChatPage() {
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [isStarted, setIsStarted] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
-  const [otherUserTyping, setOtherUserTyping] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(false);
   const [showGifPicker, setShowGifPicker] = useState(false);
@@ -75,7 +76,7 @@ export default function ChatPage() {
         ...prev,
         {
           id: Date.now().toString(),
-          text: 'User disconnected. Click "Start" to find a new match.',
+          text: "User disconnected. Click &quot;Start&quot; to find a new match.",
           isOwn: false,
         },
       ]);
@@ -85,9 +86,14 @@ export default function ChatPage() {
     },
   });
 
-  // Auto scroll to bottom of messages
+  // Request permissions once on mount
   useEffect(() => {
     requestPermissions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Auto scroll to bottom of messages when list changes
+  useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
@@ -222,7 +228,7 @@ export default function ChatPage() {
       <div
         className="absolute inset-0 opacity-20"
         style={{
-          backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%239C92AC' fill-opacity='0.05'%3E%3Ccircle cx='30' cy='30' r='1'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
+          backgroundImage: `url("data:image/svg+xml,%3Csvg width=\'60\' height=\'60\' viewBox=\'0 0 60 60\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cg fill=\'none\' fill-rule=\'evenodd\'%3E%3Cg fill=\'%239C92AC\' fill-opacity=\'0.05\'%3E%3Ccircle cx=\'30\' cy=\'30\' r=\'1\'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
         }}
       ></div>
 
@@ -297,7 +303,8 @@ export default function ChatPage() {
                       Looking for a stranger...
                     </h3>
                     <p className="text-gray-300 text-sm sm:text-base mb-4">
-                      We're finding someone interesting for you to chat with
+                      We&apos;re finding someone interesting for you to chat
+                      with
                     </p>
                     <div className="flex justify-center">
                       <div className="flex gap-2">
@@ -475,11 +482,14 @@ export default function ChatPage() {
                         : "bg-gray-700/80 backdrop-blur-sm"
                     }`}
                   >
-                    {(msg as any).isGif ? (
-                      <img
+                    {msg.isGif ? (
+                      <Image
                         src={msg.text}
                         alt="GIF"
-                        className="max-w-full h-auto rounded"
+                        width={320}
+                        height={240}
+                        className="h-auto rounded"
+                        unoptimized
                       />
                     ) : (
                       <p className="text-white text-xs sm:text-sm">
@@ -493,7 +503,7 @@ export default function ChatPage() {
                     )}
                   </div>
                 ))}
-                {otherUserTyping && (
+                {false && (
                   <div className="bg-gray-700/80 backdrop-blur-sm p-2 sm:p-3 rounded-lg max-w-[85%] sm:max-w-[80%]">
                     <div className="flex items-center gap-2">
                       <div className="flex gap-1">
@@ -544,10 +554,13 @@ export default function ChatPage() {
                           onClick={() => handleSendGif(gif)}
                           className="aspect-square rounded-lg overflow-hidden hover:opacity-80 transition-opacity hover:scale-105"
                         >
-                          <img
+                          <Image
                             src={gif}
                             alt={`GIF ${index + 1}`}
+                            width={200}
+                            height={200}
                             className="w-full h-full object-cover"
+                            unoptimized
                           />
                         </button>
                       ))}
@@ -594,5 +607,12 @@ export default function ChatPage() {
         </div>
       </div>
     </div>
+  );
+}
+export default function ChatPage() {
+  return (
+    <Suspense fallback={<div className="p-4 text-white">Loading...</div>}>
+      <ChatPageContent />
+    </Suspense>
   );
 }
