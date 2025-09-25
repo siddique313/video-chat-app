@@ -7,8 +7,8 @@ const fs = require("fs");
 let server;
 try {
   const useHttps = process.env.HTTPS === "true";
-  const keyPath = "./localhost-key.pem";
-  const certPath = "./localhost.pem";
+  const keyPath = process.env.SSL_KEY || "./dev-key.pem";
+  const certPath = process.env.SSL_CERT || "./dev-cert.pem";
   const hasCerts = fs.existsSync(keyPath) && fs.existsSync(certPath);
 
   if (useHttps && hasCerts) {
@@ -17,7 +17,7 @@ try {
       cert: fs.readFileSync(certPath),
     };
     server = https.createServer(options);
-    console.log("Using HTTPS for Socket.IO server");
+    console.log("Using HTTPS for Socket.IO server", { keyPath, certPath });
   } else {
     server = http.createServer();
   }
@@ -28,12 +28,22 @@ try {
 
 const io = new Server(server, {
   cors: {
-    origin: [
-      "http://localhost:3000",
-      "https://localhost:3000",
-      "http://127.0.0.1:3000",
-      "https://127.0.0.1:3000",
-    ],
+    origin: (origin, callback) => {
+      // Allow localhost and same-LAN hosts (http and https)
+      const allowlist = [
+        /^http:\/\/localhost:3000$/,
+        /^https:\/\/localhost:3000$/,
+        /^http:\/\/127\.0\.0\.1:3000$/,
+        /^https:\/\/127\.0\.0\.1:3000$/,
+      ];
+      const isLan =
+        typeof origin === "string" &&
+        /^(http|https):\/\/\d+\.\d+\.\d+\.\d+(:\d+)?$/.test(origin);
+      const allowed =
+        !origin || allowlist.some((re) => re.test(origin)) || isLan;
+      if (allowed) return callback(null, true);
+      return callback(new Error(`CORS not allowed for origin: ${origin}`));
+    },
     methods: ["GET", "POST"],
     credentials: true,
   },
