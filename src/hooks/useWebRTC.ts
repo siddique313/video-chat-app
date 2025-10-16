@@ -1,5 +1,7 @@
+"use client";
+
 import { useRef, useEffect, useState, useCallback } from "react";
-import io from "socket.io-client";
+import io, { Socket } from "socket.io-client";
 
 interface UseWebRTCOptions {
   roomId?: string;
@@ -16,7 +18,7 @@ interface UseWebRTCOptions {
 }
 
 export const useWebRTC = (options: UseWebRTCOptions = {}) => {
-  const [socket, setSocket] = useState<ReturnType<typeof io> | null>(null);
+  const [socket, setSocket] = useState<Socket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -30,8 +32,21 @@ export const useWebRTC = (options: UseWebRTCOptions = {}) => {
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  // ✅ Initialize PeerConnection
   const initializePeerConnection = () => {
-    const peerConnection = new RTCPeerConnection({
+    if (typeof window === "undefined") return null;
+
+    const RTCPeer =
+      window.RTCPeerConnection ||
+      (window as any).webkitRTCPeerConnection ||
+      (window as any).mozRTCPeerConnection;
+
+    if (!RTCPeer) {
+      setError("WebRTC not supported in this browser/environment");
+      return null;
+    }
+
+    const peerConnection = new RTCPeer({
       iceServers: [
         { urls: "stun:stun.l.google.com:19302" },
         { urls: "stun:stun1.l.google.com:19302" },
@@ -60,19 +75,15 @@ export const useWebRTC = (options: UseWebRTCOptions = {}) => {
       const state = peerConnection.connectionState;
       setConnectionState(state);
       options.onConnectionStateChange?.(state);
+
       setIsConnected(state === "connected");
 
       if (state === "failed" || state === "disconnected") {
         setIsConnected(false);
-        // Attempt to reconnect after a delay
-        if (reconnectTimeoutRef.current) {
+        if (reconnectTimeoutRef.current)
           clearTimeout(reconnectTimeoutRef.current);
-        }
         reconnectTimeoutRef.current = setTimeout(() => {
-          if (socket && socket.connected) {
-            console.log("Attempting to reconnect...");
-            connect();
-          }
+          if (socket && socket.connected) connect();
         }, 3000);
       }
     };
@@ -85,6 +96,7 @@ export const useWebRTC = (options: UseWebRTCOptions = {}) => {
     return peerConnection;
   };
 
+  // ✅ Start local camera + mic
   const startLocalStream = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -98,7 +110,6 @@ export const useWebRTC = (options: UseWebRTCOptions = {}) => {
         localVideoRef.current.srcObject = stream;
       }
 
-      // Add tracks to peer connection
       if (peerConnectionRef.current) {
         stream.getTracks().forEach((track) => {
           peerConnectionRef.current?.addTrack(track, stream);
@@ -112,6 +123,7 @@ export const useWebRTC = (options: UseWebRTCOptions = {}) => {
     }
   };
 
+  // ✅ Connect to signaling server
   const connect = async (roomId?: string, data?: { interests?: string }) => {
     if (isConnecting || isConnected) return;
 
@@ -119,48 +131,46 @@ export const useWebRTC = (options: UseWebRTCOptions = {}) => {
     setError(null);
 
     try {
-      // Clean up any existing connection first
       if (socket) {
         socket.removeAllListeners();
         socket.disconnect();
       }
 
-      // Initialize socket connection with dynamic URL and WS transport
       const socketUrl =
         process.env.NEXT_PUBLIC_SOCKET_URL ||
         `${window.location.protocol}//${window.location.hostname}:3001`;
+
+      const publicIP = await fetch("https://api.ipify.org?format=json")
+        .then((res) => res.json())
+        .then((data) => data.ip)
+        .catch(() => "unknown");
 
       const newSocket = io(socketUrl, {
         transports: ["websocket"],
         reconnection: true,
         reconnectionAttempts: 5,
         timeout: 10000,
+        query: { ip: publicIP },
       });
+
       setSocket(newSocket);
 
-      // Initialize peer connection
       const peerConnection = initializePeerConnection();
+      if (!peerConnection) throw new Error("Failed to initialize WebRTC");
 
-      // Start local stream
       await startLocalStream();
 
-      // Socket event handlers
       newSocket.on("connect", () => {
-        console.log("Connected to server");
-        if (roomId) {
-          newSocket.emit("join-room", roomId);
-        } else {
-          newSocket.emit("find-match", data);
-        }
+        console.log("Connected to signaling server");
+        if (roomId) newSocket.emit("join-room", roomId);
+        else newSocket.emit("find-match", data);
       });
 
       newSocket.on(
         "match-found",
-        (data: { roomId: string; isInitiator: boolean }) => {
+        async (data: { roomId: string; isInitiator: boolean }) => {
           console.log("Match found:", data);
-          if (data.isInitiator) {
-            createOffer();
-          }
+          if (data.isInitiator) await createOffer();
         }
       );
 
@@ -193,13 +203,11 @@ export const useWebRTC = (options: UseWebRTCOptions = {}) => {
         }
       });
 
-      newSocket.on(
-        "chat-message",
-        (message: { id: string; text: string; isOwn: boolean }) => {
-          options.onChatMessage?.(message);
-        }
-      );
+      newSocket.on("chat-message", (message) => {
+        options.onChatMessage?.(message);
+      });
 
+      // ✅ Fixed TypeScript-safe callbacks
       newSocket.on("user-disconnected", () => {
         setIsConnected(false);
         setIsConnecting(false);
@@ -208,6 +216,10 @@ export const useWebRTC = (options: UseWebRTCOptions = {}) => {
 
       newSocket.on("user-connected", () => {
         options.onUserConnected?.();
+      });
+
+      newSocket.on("online-count", (count: number) => {
+        options.onOnlineCountUpdate?.(count);
       });
 
       newSocket.on("disconnect", () => {
@@ -220,16 +232,11 @@ export const useWebRTC = (options: UseWebRTCOptions = {}) => {
         setError("Failed to connect to server");
         setIsConnecting(false);
       });
-
-      newSocket.on("online-count", (count: number) => {
-        options.onOnlineCountUpdate?.(count);
-      });
     } catch (err) {
+      console.error("Connection error:", err);
       setError("Failed to connect");
       setIsConnecting(false);
-      console.error("Connection error:", err);
 
-      // Clean up on error
       if (socket) {
         socket.removeAllListeners();
         socket.disconnect();
@@ -242,6 +249,7 @@ export const useWebRTC = (options: UseWebRTCOptions = {}) => {
     }
   };
 
+  // ✅ Create WebRTC offer
   const createOffer = async () => {
     if (!peerConnectionRef.current) return;
 
@@ -254,6 +262,7 @@ export const useWebRTC = (options: UseWebRTCOptions = {}) => {
     }
   };
 
+  // ✅ Disconnect & cleanup
   const disconnect = useCallback(() => {
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
@@ -261,7 +270,7 @@ export const useWebRTC = (options: UseWebRTCOptions = {}) => {
     }
 
     if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach((track) => track.stop());
+      localStreamRef.current.getTracks().forEach((t) => t.stop());
       localStreamRef.current = null;
     }
 
@@ -286,6 +295,7 @@ export const useWebRTC = (options: UseWebRTCOptions = {}) => {
     setConnectionState("disconnected");
   }, [socket]);
 
+  // ✅ Send chat message
   const sendMessage = (message: string) => {
     if (socket && isConnected) {
       socket.emit("chat-message", message);
@@ -298,34 +308,31 @@ export const useWebRTC = (options: UseWebRTCOptions = {}) => {
     };
   }, [disconnect]);
 
+  // ✅ Request camera/mic permissions (HTTPS only)
   const requestPermissions = async () => {
     try {
-      // Check if we're on HTTPS or localhost
       const isSecure =
         window.location.protocol === "https:" ||
         window.location.hostname === "localhost" ||
         window.location.hostname === "127.0.0.1";
 
       if (!isSecure) {
-        const errorMsg = `WebRTC requires HTTPS for network access. Current URL: ${window.location.href}. Please use HTTPS or access via localhost.`;
-        setError(errorMsg);
-        throw new Error(errorMsg);
+        const msg = `WebRTC requires HTTPS. Current: ${window.location.href}`;
+        setError(msg);
+        throw new Error(msg);
       }
 
-      // Check if getUserMedia is supported
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        const errorMsg = "getUserMedia is not supported in this browser";
-        setError(errorMsg);
-        throw new Error(errorMsg);
+      if (!navigator.mediaDevices?.getUserMedia) {
+        const msg = "getUserMedia not supported in this browser";
+        setError(msg);
+        throw new Error(msg);
       }
 
-      // Request both camera & microphone with specific constraints for better Mac compatibility
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           width: { ideal: 1280 },
           height: { ideal: 720 },
           frameRate: { ideal: 30 },
-          facingMode: "user",
         },
         audio: {
           echoCancellation: true,
@@ -334,42 +341,19 @@ export const useWebRTC = (options: UseWebRTCOptions = {}) => {
         },
       });
 
-      // Store the stream for later use
       localStreamRef.current = stream;
+      if (localVideoRef.current) localVideoRef.current.srcObject = stream;
 
-      // Attach stream to your local video ref
-      if (localVideoRef.current) {
-        localVideoRef.current.srcObject = stream;
-      }
-
-      console.log("Camera & mic access granted");
       setError(null);
+      console.log("Camera & mic access granted");
       return stream;
-    } catch (err: unknown) {
-      console.error("Camera/Microphone permission denied:", err);
-
-      let errorMessage = "Camera/Microphone access denied";
-
-      const errorObject = err as
-        | { name?: string; message?: string }
-        | undefined;
-
-      if (errorObject?.name === "NotAllowedError") {
-        errorMessage =
-          "Camera/Microphone permission denied. Please allow access and refresh the page.";
-      } else if (errorObject?.name === "NotFoundError") {
-        errorMessage = "No camera/microphone found. Please check your devices.";
-      } else if (errorObject?.name === "NotReadableError") {
-        errorMessage =
-          "Camera/Microphone is being used by another application.";
-      } else if (errorObject?.name === "OverconstrainedError") {
-        errorMessage = "Camera/Microphone constraints cannot be satisfied.";
-      } else if (errorObject?.name === "SecurityError") {
-        errorMessage =
-          "Camera/Microphone access blocked due to security restrictions.";
-      }
-
-      setError(errorMessage);
+    } catch (err: any) {
+      console.error("Permission denied:", err);
+      let msg = "Camera/Microphone access error";
+      if (err.name === "NotAllowedError")
+        msg = "Permission denied. Please allow access.";
+      else if (err.name === "NotFoundError") msg = "No camera/mic found.";
+      setError(msg);
       throw err;
     }
   };
