@@ -19,6 +19,7 @@
   "dependencies": {
     "@types/simple-peer": "^9.11.8",
     "@types/uuid": "^10.0.0",
+    "geoip-lite": "^1.4.10",
     "lucide-react": "^0.544.0",
     "net": "^1.0.2",
     "next": "15.5.3",
