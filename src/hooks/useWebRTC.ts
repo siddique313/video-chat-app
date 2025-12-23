@@ -24,6 +24,7 @@ export const useWebRTC = (options: UseWebRTCOptions = {}) => {
   const [error, setError] = useState<string | null>(null);
   const [connectionState, setConnectionState] =
     useState<string>("disconnected");
+  const [roomId, setRoomId] = useState<string | null>(null);
 
   const localStreamRef = useRef<MediaStream | null>(null);
   const remoteStreamRef = useRef<MediaStream | null>(null);
@@ -38,8 +39,16 @@ export const useWebRTC = (options: UseWebRTCOptions = {}) => {
 
     const RTCPeer =
       window.RTCPeerConnection ||
-      (window as any).webkitRTCPeerConnection ||
-      (window as any).mozRTCPeerConnection;
+      (
+        window as typeof window & {
+          webkitRTCPeerConnection?: typeof RTCPeerConnection;
+        }
+      ).webkitRTCPeerConnection ||
+      (
+        window as typeof window & {
+          mozRTCPeerConnection?: typeof RTCPeerConnection;
+        }
+      ).mozRTCPeerConnection;
 
     if (!RTCPeer) {
       setError("WebRTC not supported in this browser/environment");
@@ -57,8 +66,8 @@ export const useWebRTC = (options: UseWebRTCOptions = {}) => {
     });
 
     peerConnection.onicecandidate = (event) => {
-      if (event.candidate && socket) {
-        socket.emit("ice-candidate", event.candidate);
+      if (event.candidate && socket && roomId) {
+        socket.emit("ice-candidates", roomId, [event.candidate]);
       }
     };
 
@@ -138,7 +147,7 @@ export const useWebRTC = (options: UseWebRTCOptions = {}) => {
 
       const socketUrl =
         process.env.NEXT_PUBLIC_SOCKET_URL ||
-        `${window.location.protocol}//${window.location.hostname}:3001`;
+        `${window.location.protocol}//${window.location.hostname}:8000`;
 
       const publicIP = await fetch("https://api.ipify.org?format=json")
         .then((res) => res.json())
@@ -163,23 +172,26 @@ export const useWebRTC = (options: UseWebRTCOptions = {}) => {
       newSocket.on("connect", () => {
         console.log("Connected to signaling server");
         if (roomId) newSocket.emit("join-room", roomId);
-        else newSocket.emit("find-match", data);
+        else newSocket.emit("join");
       });
 
-      newSocket.on(
-        "match-found",
-        async (data: { roomId: string; isInitiator: boolean }) => {
-          console.log("Match found:", data);
-          if (data.isInitiator) await createOffer();
-        }
-      );
+      newSocket.on("joined", (data: { room: string }) => {
+        console.log("Joined room:", data.room);
+        setRoomId(data.room);
+        options.onUserConnected?.();
+      });
+
+      newSocket.on("send-offer", () => {
+        console.log("Server requested offer");
+        createOffer();
+      });
 
       newSocket.on("offer", async (offer: RTCSessionDescriptionInit) => {
         try {
           await peerConnection.setRemoteDescription(offer);
           const answer = await peerConnection.createAnswer();
           await peerConnection.setLocalDescription(answer);
-          newSocket.emit("answer", answer);
+          if (roomId) newSocket.emit("answer", roomId, answer);
         } catch (err) {
           console.error("Error handling offer:", err);
           setError("Failed to handle connection offer");
@@ -195,20 +207,25 @@ export const useWebRTC = (options: UseWebRTCOptions = {}) => {
         }
       });
 
-      newSocket.on("ice-candidate", async (candidate: RTCIceCandidateInit) => {
-        try {
-          await peerConnection.addIceCandidate(candidate);
-        } catch (err) {
-          console.error("Error adding ICE candidate:", err);
+      newSocket.on(
+        "ice-candidates",
+        async (candidates: RTCIceCandidateInit[]) => {
+          try {
+            for (const candidate of candidates) {
+              await peerConnection.addIceCandidate(candidate);
+            }
+          } catch (err) {
+            console.error("Error adding ICE candidate:", err);
+          }
         }
-      });
+      );
 
-      newSocket.on("chat-message", (message) => {
+      newSocket.on("message", (message) => {
         options.onChatMessage?.(message);
       });
 
       // ✅ Fixed TypeScript-safe callbacks
-      newSocket.on("user-disconnected", () => {
+      newSocket.on("leaveRoom", () => {
         setIsConnected(false);
         setIsConnecting(false);
         options.onUserDisconnected?.();
@@ -218,7 +235,7 @@ export const useWebRTC = (options: UseWebRTCOptions = {}) => {
         options.onUserConnected?.();
       });
 
-      newSocket.on("online-count", (count: number) => {
+      newSocket.on("user-count", (count: number) => {
         options.onOnlineCountUpdate?.(count);
       });
 
@@ -251,12 +268,12 @@ export const useWebRTC = (options: UseWebRTCOptions = {}) => {
 
   // ✅ Create WebRTC offer
   const createOffer = async () => {
-    if (!peerConnectionRef.current) return;
+    if (!peerConnectionRef.current || !roomId) return;
 
     try {
       const offer = await peerConnectionRef.current.createOffer();
       await peerConnectionRef.current.setLocalDescription(offer);
-      socket?.emit("offer", offer);
+      socket?.emit("offer", roomId, offer);
     } catch (err) {
       console.error("Error creating offer:", err);
     }
@@ -267,6 +284,10 @@ export const useWebRTC = (options: UseWebRTCOptions = {}) => {
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
+    }
+
+    if (socket && roomId) {
+      socket.emit("leaveRoom", roomId);
     }
 
     if (localStreamRef.current) {
@@ -293,12 +314,13 @@ export const useWebRTC = (options: UseWebRTCOptions = {}) => {
     setIsConnecting(false);
     setError(null);
     setConnectionState("disconnected");
-  }, [socket]);
+    setRoomId(null);
+  }, [socket, roomId]);
 
   // ✅ Send chat message
   const sendMessage = (message: string) => {
-    if (socket && isConnected) {
-      socket.emit("chat-message", message);
+    if (socket && isConnected && roomId) {
+      socket.emit("message", roomId, message);
     }
   };
 
@@ -347,12 +369,14 @@ export const useWebRTC = (options: UseWebRTCOptions = {}) => {
       setError(null);
       console.log("Camera & mic access granted");
       return stream;
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Permission denied:", err);
       let msg = "Camera/Microphone access error";
-      if (err.name === "NotAllowedError")
-        msg = "Permission denied. Please allow access.";
-      else if (err.name === "NotFoundError") msg = "No camera/mic found.";
+      if (err instanceof Error) {
+        if (err.name === "NotAllowedError")
+          msg = "Permission denied. Please allow access.";
+        else if (err.name === "NotFoundError") msg = "No camera/mic found.";
+      }
       setError(msg);
       throw err;
     }
