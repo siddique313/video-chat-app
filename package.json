@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit",
     "prebuild": "next lint && npm run typecheck",
     "start": "next start",
-    "lint": "eslint",
+    "lint": "next lint",
     "server": "node server.js",
     "dev:full": "concurrently \"npm run server\" \"npm run dev\"",
     "dev:full:https": "concurrently \"npm run server\" \"npm run dev:https\"",
