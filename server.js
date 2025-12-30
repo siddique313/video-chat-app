@@ -28,16 +28,16 @@ class Queue {
     this.items = this.items.filter((item) => item !== id);
   }
 
-  size() {
-    return this.items.length;
-  }
-
   has(id) {
     return this.items.includes(id);
   }
 
+  size() {
+    return this.items.length;
+  }
+
   print() {
-    console.log("QUEUE => ", this.items);
+    console.log("QUEUE:", this.items);
   }
 }
 
@@ -57,12 +57,15 @@ class RoomManager {
     if (this.queue.has(socketId) || this.userRoom.has(socketId)) return;
 
     this.queue.enqueue(socketId);
-    console.log("User added to queue:", socketId);
+    console.log("User queued:", socketId);
     this.queue.print();
 
-    if (this.queue.size() >= 2) {
+    // SAFER: handle multiple joins
+    while (this.queue.size() >= 2) {
       const user1 = this.queue.dequeue();
       const user2 = this.queue.dequeue();
+
+      if (!user1 || !user2) return;
 
       const roomId = uuidv4();
 
@@ -75,66 +78,87 @@ class RoomManager {
 
       this.io.to(roomId).emit("joined", { roomId });
 
-      // Ask first user to create WebRTC offer
-      this.io.to(user1).emit("send-offer");
+      // Random offerer
+      const offerer = Math.random() > 0.5 ? user1 : user2;
+      this.io.to(offerer).emit("send-offer");
 
       console.log("Room created:", roomId);
     }
   }
 
+  validate(socketId, roomId) {
+    return this.userRoom.get(socketId) === roomId;
+  }
+
+  getReceiver(socketId, room) {
+    return room.user1 === socketId ? room.user2 : room.user1;
+  }
+
   handleOffer(socketId, roomId, offer) {
+    if (!this.validate(socketId, roomId)) return;
     const room = this.rooms.get(roomId);
     if (!room) return;
-    const receiver = room.user1 === socketId ? room.user2 : room.user1;
+
+    const receiver = this.getReceiver(socketId, room);
     this.io.to(receiver).emit("offer", { offer });
   }
 
   handleAnswer(socketId, roomId, answer) {
+    if (!this.validate(socketId, roomId)) return;
     const room = this.rooms.get(roomId);
     if (!room) return;
-    const receiver = room.user1 === socketId ? room.user2 : room.user1;
+
+    const receiver = this.getReceiver(socketId, room);
     this.io.to(receiver).emit("answer", { answer });
   }
 
   handleIceCandidates(socketId, roomId, candidate) {
+    if (!this.validate(socketId, roomId)) return;
     const room = this.rooms.get(roomId);
     if (!room) return;
-    const receiver = room.user1 === socketId ? room.user2 : room.user1;
+
+    const receiver = this.getReceiver(socketId, room);
     this.io.to(receiver).emit("ice-candidates", { candidate });
   }
 
   handleMessage(socketId, roomId, message) {
+    if (!this.validate(socketId, roomId)) return;
     const room = this.rooms.get(roomId);
     if (!room) return;
-    const receiver = room.user1 === socketId ? room.user2 : room.user1;
+
+    const receiver = this.getReceiver(socketId, room);
     this.io.to(receiver).emit("message", { message });
   }
 
-  leaveRoom(socketId) {
+  leaveRoom(socketId, requeue = true) {
     const roomId = this.userRoom.get(socketId);
     if (!roomId) return;
 
     const room = this.rooms.get(roomId);
     if (!room) return;
 
-    const otherUser = room.user1 === socketId ? room.user2 : room.user1;
+    const otherUser = this.getReceiver(socketId, room);
 
     this.io.to(otherUser).emit("leaveRoom");
+
+    this.io.sockets.sockets.get(socketId)?.leave(roomId);
+    this.io.sockets.sockets.get(otherUser)?.leave(roomId);
 
     this.rooms.delete(roomId);
     this.userRoom.delete(socketId);
     this.userRoom.delete(otherUser);
 
-    this.io.sockets.sockets.get(otherUser)?.leave(roomId);
+    if (requeue) {
+      this.queue.enqueue(otherUser);
+    }
 
     console.log("Room deleted:", roomId);
   }
 
   disconnect(socketId) {
     console.log("Disconnected:", socketId);
-
     this.queue.remove(socketId);
-    this.leaveRoom(socketId);
+    this.leaveRoom(socketId, false);
   }
 }
 
@@ -145,53 +169,54 @@ const server = http.createServer(app);
 
 const io = new Server(server, {
   cors: {
-    origin: process.env.CORS_ORIGIN || "http://localhost:3000",
+    origin: process.env.CORS_ORIGIN || "*",
     methods: ["GET", "POST"],
   },
 });
 
 app.use(cors());
-app.get("/", (_, res) => res.json({ status: "Server running" }));
+app.get("/", (_, res) => {
+  res.json({ status: "Server running" });
+});
 
 const manager = new RoomManager(io);
-
 let USER_COUNT = 0;
 
 /* ================= SOCKET EVENTS ================= */
 
-io.on("connection", (Socket) => {
+io.on("connection", (socket) => {
   USER_COUNT++;
   io.emit("user-count", USER_COUNT);
-  console.log("Connected:", Socket.id);
+  console.log("Connected:", socket.id);
 
-  Socket.on("join", () => {
-    manager.addUser(Socket);
+  socket.on("join", () => {
+    manager.addUser(socket);
   });
 
-  Socket.on("offer", ({ roomId, offer }) => {
-    manager.handleOffer(Socket.id, roomId, offer);
+  socket.on("offer", ({ roomId, offer }) => {
+    manager.handleOffer(socket.id, roomId, offer);
   });
 
-  Socket.on("answer", ({ roomId, answer }) => {
-    manager.handleAnswer(Socket.id, roomId, answer);
+  socket.on("answer", ({ roomId, answer }) => {
+    manager.handleAnswer(socket.id, roomId, answer);
   });
 
-  Socket.on("ice-candidates", ({ roomId, candidate }) => {
-    manager.handleIceCandidates(Socket.id, roomId, candidate);
+  socket.on("ice-candidates", ({ roomId, candidate }) => {
+    manager.handleIceCandidates(socket.id, roomId, candidate);
   });
 
-  Socket.on("message", ({ roomId, message }) => {
-    manager.handleMessage(Socket.id, roomId, message);
+  socket.on("message", ({ roomId, message }) => {
+    manager.handleMessage(socket.id, roomId, message);
   });
 
-  Socket.on("leaveRoom", () => {
-    manager.leaveRoom(Socket.id);
+  socket.on("leaveRoom", () => {
+    manager.leaveRoom(socket.id);
   });
 
-  Socket.on("disconnect", () => {
+  socket.on("disconnect", () => {
     USER_COUNT = Math.max(0, USER_COUNT - 1);
     io.emit("user-count", USER_COUNT);
-    manager.disconnect(Socket.id);
+    manager.disconnect(socket.id);
   });
 });
 
@@ -199,5 +224,5 @@ io.on("connection", (Socket) => {
 
 const PORT = process.env.PORT || 8000;
 server.listen(PORT, "0.0.0.0", () => {
-  console.log(`Server listening on port ${PORT}`);
+  console.log(`🚀 Server running on port ${PORT}`);
 });
