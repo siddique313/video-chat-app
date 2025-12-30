@@ -1,5 +1,4 @@
 import Image from "next/image";
-import { Poppins } from "next/font/google";
 import Link from "next/link";
 
 function AppBar({ online }: { online: string }) {

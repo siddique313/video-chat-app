@@ -1,23 +1,30 @@
 "use client";
+
 import React, { useEffect, useRef, useState } from "react";
 import { io, Socket } from "socket.io-client";
 import configuration from "../config/config";
 import AppBar from "@/component/appBar";
+
+/* ================= TYPES ================= */
 
 interface Message {
   from: "host" | "remote";
   message: string;
 }
 
+/* ================= PAGE ================= */
+
 export default function Page() {
   /* ================= STATE ================= */
+
   const [messages, setMessages] = useState<Message[]>([]);
   const [messageText, setMessageText] = useState("");
   const [userCount, setUserCount] = useState("🔃");
-  const [mediaReady, setMediaReady] = useState(false);
-  const [roomId, setRoomId] = useState<string | null>(null);
+  const [, setMediaReady] = useState(false);
+  const [, setRoomId] = useState<string | null>(null);
 
   /* ================= REFS ================= */
+
   const socketRef = useRef<Socket | null>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const roomIdRef = useRef<string | null>(null);
@@ -29,35 +36,44 @@ export default function Page() {
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
 
-  /* ================= INIT LOCAL MEDIA (ONCE) ================= */
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  /* ================= INIT LOCAL CAMERA (FIXED) ================= */
+
   useEffect(() => {
-    const initLocalMedia = async () => {
-      if (localStreamRef.current) return;
+    const initCamera = async () => {
+      try {
+        if (localStreamRef.current) return;
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: true,
-        audio: true,
-      });
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: true,
+        });
 
-      localStreamRef.current = stream;
-      if (localVideoRef.current) {
-        localVideoRef.current.srcObject = stream;
+        localStreamRef.current = stream;
+
+        if (localVideoRef.current) {
+          localVideoRef.current.srcObject = stream;
+          localVideoRef.current.muted = true;
+          localVideoRef.current.playsInline = true;
+          await localVideoRef.current.play(); // 🔥 REQUIRED
+        }
+
+        setMediaReady(true);
+      } catch (err) {
+        console.error("Camera error:", err);
+        alert("Please allow camera & microphone access");
       }
-      setMediaReady(true);
     };
 
-    initLocalMedia();
+    initCamera();
   }, []);
 
-  /* ================= CREATE PC WHEN READY ================= */
-  useEffect(() => {
-    if (roomId && mediaReady && !pcRef.current) {
-      createPeerConnection();
-    }
-  }, [roomId, mediaReady]);
-
   /* ================= CREATE PEER CONNECTION ================= */
+
   const createPeerConnection = () => {
+    if (pcRef.current) return;
+
     const pc = new RTCPeerConnection(configuration);
     pcRef.current = pc;
 
@@ -66,7 +82,7 @@ export default function Page() {
       pc.addTrack(track, localStreamRef.current!);
     });
 
-    // ICE
+    // ICE candidates
     pc.onicecandidate = (e) => {
       if (e.candidate && roomIdRef.current) {
         socketRef.current?.emit("ice-candidates", {
@@ -76,75 +92,65 @@ export default function Page() {
       }
     };
 
-    // Remote tracks
+    // Remote stream
     pc.ontrack = (e) => {
       if (!remoteStreamRef.current) {
         remoteStreamRef.current = new MediaStream();
         if (remoteVideoRef.current) {
           remoteVideoRef.current.srcObject = remoteStreamRef.current;
+          remoteVideoRef.current.playsInline = true;
         }
       }
       remoteStreamRef.current.addTrack(e.track);
     };
-
-    return pc;
   };
 
   /* ================= SOCKET + SIGNALING ================= */
+
   useEffect(() => {
     const socket = io(process.env.NEXT_PUBLIC_SOCKET_URL as string, {
       transports: ["websocket"],
     });
-    socketRef.current = socket;
 
+    socketRef.current = socket;
     socket.emit("join");
 
     socket.on("joined", ({ roomId }) => {
       setRoomId(roomId);
       roomIdRef.current = roomId;
+      createPeerConnection();
     });
 
     socket.on("send-offer", async () => {
       if (!pcRef.current) return;
       const offer = await pcRef.current.createOffer();
       await pcRef.current.setLocalDescription(offer);
-      socket.emit("offer", { roomId: roomIdRef.current, offer });
+
+      socket.emit("offer", {
+        roomId: roomIdRef.current,
+        offer: pcRef.current.localDescription,
+      });
     });
 
     socket.on("offer", async ({ offer }) => {
-      if (!pcRef.current) createPeerConnection();
+      createPeerConnection();
 
-      console.log("Received offer:", offer); // debug
-
-      // Make sure the offer has type and sdp
-      if (!offer.type || !offer.sdp) {
-        console.error("Invalid offer received:", offer);
-        return;
-      }
-
-      // Set remote description
       await pcRef.current!.setRemoteDescription(offer);
 
-      // Create answer
       const answer = await pcRef.current!.createAnswer();
       await pcRef.current!.setLocalDescription(answer);
 
-      // Emit the full localDescription, not just the answer object
       socket.emit("answer", {
         roomId: roomIdRef.current,
-        answer: pcRef.current!.localDescription, // <- this is correct
+        answer: pcRef.current!.localDescription,
       });
 
-      // Add any pending ICE candidates
       pendingIceRef.current.forEach((c) => pcRef.current?.addIceCandidate(c));
       pendingIceRef.current = [];
     });
 
     socket.on("answer", async ({ answer }) => {
       await pcRef.current?.setRemoteDescription(answer);
-
-      pendingIceRef.current.forEach((c) => pcRef.current?.addIceCandidate(c));
-      pendingIceRef.current = [];
     });
 
     socket.on("ice-candidates", ({ candidate }) => {
@@ -159,9 +165,7 @@ export default function Page() {
       setMessages((prev) => [...prev, { from: "remote", message }]);
     });
 
-    socket.on("user-count", (count: string) => {
-      setUserCount(count);
-    });
+    socket.on("user-count", (count) => setUserCount(count));
     socket.on("leaveRoom", cleanupRoom);
 
     return () => {
@@ -170,7 +174,8 @@ export default function Page() {
     };
   }, []);
 
-  /* ================= CLEANUP ROOM ================= */
+  /* ================= CLEANUP ================= */
+
   const cleanupRoom = () => {
     setRoomId(null);
     roomIdRef.current = null;
@@ -179,135 +184,111 @@ export default function Page() {
     remoteStreamRef.current = null;
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
 
-    if (pcRef.current && pcRef.current.signalingState !== "closed") {
-      pcRef.current.close();
-    }
+    if (pcRef.current) pcRef.current.close();
     pcRef.current = null;
 
     setMessages([]);
   };
 
-  /* ================= CHAT ================= */
+  /* ================= ACTIONS ================= */
 
   const handleSkip = () => {
     socketRef.current?.emit("leaveRoom");
     cleanupRoom();
-    // Rejoin to find a new user
     socketRef.current?.emit("join");
   };
+
   const handleSend = (e?: React.SyntheticEvent) => {
-    e?.preventDefault(); // Prevent default form submission behavior
-    e?.stopPropagation(); //
-    if (!roomIdRef.current) return;
+    e?.preventDefault();
+    if (!roomIdRef.current || !messageText.trim()) return;
+
     socketRef.current?.emit("message", {
       roomId: roomIdRef.current,
       message: messageText,
     });
-    setMessages((prev) => [{ from: "host", message: messageText }, ...prev]);
+
+    setMessages((prev) => [...prev, { from: "host", message: messageText }]);
     setMessageText("");
   };
 
-  const inputRef = useRef<HTMLInputElement | null>(null);
-
-  const focusInput = () => {
-    if (inputRef.current) {
-      inputRef.current.focus();
-    }
-  };
   /* ================= UI ================= */
-  return (
-    <>
-      <div className="bg-zinc-900 min-h-screen flex flex-col ">
-        <AppBar online={userCount} />
 
-        <div className="flex-grow mt-2 mx-4 md:mx-20 grid grid-cols-1 md:grid-cols-12 gap-6">
-          <div className="col-span-1 md:col-span-5 flex flex-col gap-4">
-            <div className="h-[100%] sm:h-[45%] bg-slate-700 rounded-3xl flex items-center justify-center overflow-hidden">
-              <video
-                id="remoteVideo"
-                ref={remoteVideoRef}
-                className="rounded-3xl w-full h-full object-cover"
-                autoPlay
-              />
-            </div>
-            <div className="h-[100%] sm:h-[45%] bg-slate-700 rounded-3xl flex items-center justify-center overflow-hidden">
-              <video
-                id="localVideo"
-                ref={localVideoRef}
-                className="rounded-3xl w-full h-full object-cover"
-                autoPlay
-                muted
-              />
-            </div>
+  return (
+    <div className="bg-zinc-900 min-h-screen flex flex-col">
+      <AppBar online={userCount} />
+
+      <div className="flex-grow mt-2 mx-4 md:mx-20 grid grid-cols-1 md:grid-cols-12 gap-6">
+        {/* VIDEO */}
+        <div className="md:col-span-5 flex flex-col gap-4">
+          <div className="bg-black rounded-3xl overflow-hidden h-[45%]">
+            <video
+              ref={remoteVideoRef}
+              autoPlay
+              playsInline
+              className="w-full h-full object-cover"
+            />
           </div>
 
-          <div className="col-span-1 md:col-span-7 flex flex-col max-h-[90vh]">
-            <div className="bg-zinc-800 h-full w-full rounded-3xl p-5 flex flex-col">
+          <div className="bg-black rounded-3xl overflow-hidden h-[45%]">
+            <video
+              ref={localVideoRef}
+              autoPlay
+              muted
+              playsInline
+              className="w-full h-full object-cover"
+            />
+          </div>
+        </div>
+
+        {/* CHAT */}
+        <div className="md:col-span-7 bg-zinc-800 rounded-3xl p-5 flex flex-col">
+          <div className="flex-grow overflow-y-auto">
+            {messages.map((m, i) => (
               <div
-                className="flex-grow hide-scrollbar"
-                style={{ maxHeight: "calc(100vh - 200px)" }}
+                key={i}
+                className={`my-2 ${
+                  m.from === "host" ? "text-right" : "text-left"
+                }`}
               >
-                {messages.map((msg, index) => (
-                  <div
-                    key={index}
-                    className={`flex my-2 ${
-                      msg.from === "host" ? "justify-end" : "justify-start"
-                    }`}
-                  >
-                    <div
-                      className={`chat-message p-3 rounded-3xl ${
-                        msg.from === "host"
-                          ? "bg-blue-500 text-white"
-                          : "bg-gray-200 text-black"
-                      }`}
-                    >
-                      <p className={`text-sm`}>{msg.message}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="flex items-center mt-4">
-                <div
-                  className="bg-green-500 px-4 py-2 rounded-lg cursor-pointer text-white"
-                  onClick={handleSkip}
-                  onTouchEnd={handleSkip}
+                <span
+                  className={`px-4 py-2 rounded-2xl inline-block ${
+                    m.from === "host"
+                      ? "bg-blue-500 text-white"
+                      : "bg-gray-200 text-black"
+                  }`}
                 >
-                  {/* Use onTouchEnd instead of onTouchStart */}
-                  <h1 className="sm:text-xl text-xs">SKIP</h1>
-                </div>
-
-                <input
-                  type="text"
-                  placeholder="Type your message..."
-                  className="flex-grow ml-4 py-2 px-4 text-sm sm:text-base bg-zinc-700 text-white rounded-lg focus:outline-none"
-                  value={messageText}
-                  onChange={(e) => setMessageText(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") handleSend(e);
-                  }}
-                  onTouchStart={focusInput}
-                  ref={inputRef}
-                />
-                <button
-                  className="ml-4 p-2 bg-blue-500 rounded-lg text-white flex items-center justify-center"
-                  onClick={handleSend}
-                  onTouchEnd={handleSend}
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 24 24"
-                    fill="currentColor"
-                    className="h-6 w-6"
-                  >
-                    <path d="M3.478 2.404a.75.75 0 0 0-.926.941l2.432 7.905H13.5a.75.75 0 0 1 0 1.5H4.984l-2.432 7.905a.75.75 0 0 0 .926.94 60.519 60.519 0 0 0 18.445-8.986.75.75 0 0 0 0-1.218A60.517 60.517 0 0 0 3.478 2.404Z" />
-                  </svg>
-                </button>
+                  {m.message}
+                </span>
               </div>
-            </div>
+            ))}
+          </div>
+
+          <div className="flex gap-2 mt-3">
+            <button
+              onClick={handleSkip}
+              className="bg-green-500 text-white px-4 rounded-lg"
+            >
+              SKIP
+            </button>
+
+            <input
+              ref={inputRef}
+              value={messageText}
+              onChange={(e) => setMessageText(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleSend(e)}
+              className="flex-grow bg-zinc-700 text-white px-4 rounded-lg"
+              placeholder="Type message..."
+            />
+
+            <button
+              onClick={handleSend}
+              className="bg-blue-500 text-white px-4 rounded-lg"
+            >
+              SEND
+            </button>
           </div>
         </div>
       </div>
-    </>
+    </div>
   );
 }

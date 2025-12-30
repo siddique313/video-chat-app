@@ -20,7 +20,7 @@ export default function AdminPage() {
 
   useEffect(() => {
     // Connect to the server
-    const newSocket = io("http://localhost:3001");
+    const newSocket = io("http://localhost:8000");
     setSocket(newSocket);
 
     newSocket.on("connect", () => {

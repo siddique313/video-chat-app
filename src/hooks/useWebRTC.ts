@@ -133,7 +133,7 @@ export const useWebRTC = (options: UseWebRTCOptions = {}) => {
   };
 
   // ✅ Connect to signaling server
-  const connect = async (roomId?: string, data?: { interests?: string }) => {
+  const connect = async (roomId?: string) => {
     if (isConnecting || isConnected) return;
 
     setIsConnecting(true);
