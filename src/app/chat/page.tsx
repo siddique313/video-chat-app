@@ -56,7 +56,7 @@ export default function Page() {
           localVideoRef.current.srcObject = stream;
           localVideoRef.current.muted = true;
           localVideoRef.current.playsInline = true;
-          await localVideoRef.current.play(); // 🔥 REQUIRED
+          // Removed explicit play() call - autoPlay attribute handles this
         }
 
         setMediaReady(true);
@@ -101,7 +101,12 @@ export default function Page() {
           remoteVideoRef.current.playsInline = true;
         }
       }
-      remoteStreamRef.current.addTrack(e.track);
+      if (
+        remoteStreamRef.current &&
+        !remoteStreamRef.current.getTracks().includes(e.track)
+      ) {
+        remoteStreamRef.current.addTrack(e.track);
+      }
     };
   };
 
@@ -226,6 +231,7 @@ export default function Page() {
               autoPlay
               playsInline
               className="w-full h-full object-cover"
+              onError={(e) => console.error("Remote video error:", e)}
             />
           </div>
 
@@ -236,6 +242,7 @@ export default function Page() {
               muted
               playsInline
               className="w-full h-full object-cover"
+              onError={(e) => console.error("Local video error:", e)}
             />
           </div>
         </div>
