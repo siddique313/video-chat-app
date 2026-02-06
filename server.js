@@ -1,4 +1,6 @@
 import http from "http";
+import https from "https";
+import fs from "fs";
 import express from "express";
 import { Server } from "socket.io";
 import cors from "cors";
@@ -6,6 +8,10 @@ import dotenv from "dotenv";
 import { v4 as uuidv4 } from "uuid";
 
 dotenv.config();
+
+const USE_HTTPS =
+  process.env.SOCKET_HTTPS === "true" ||
+  (fs.existsSync("localhost-key.pem") && fs.existsSync("localhost.pem"));
 
 /* ================= QUEUE ================= */
 
@@ -165,7 +171,15 @@ class RoomManager {
 /* ================= SERVER SETUP ================= */
 
 const app = express();
-const server = http.createServer(app);
+const server = USE_HTTPS
+  ? https.createServer(
+      {
+        key: fs.readFileSync("localhost-key.pem"),
+        cert: fs.readFileSync("localhost.pem"),
+      },
+      app,
+    )
+  : http.createServer(app);
 
 const io = new Server(server, {
   cors: {
@@ -183,11 +197,14 @@ const manager = new RoomManager(io);
 let USER_COUNT = 0;
 
 /* ================= SOCKET EVENTS ================= */
+// For 2+ devices to see the correct count: run this server ONCE (one machine).
+// On the other device, open the app at http://<this-machine-ip>:3000 so both
+// connect to this same server.
 
 io.on("connection", (socket) => {
   USER_COUNT++;
   io.emit("user-count", USER_COUNT);
-  console.log("Connected:", socket.id);
+  console.log("Connected:", socket.id, "| Total online:", USER_COUNT);
 
   socket.on("join", () => {
     manager.addUser(socket);
@@ -224,5 +241,6 @@ io.on("connection", (socket) => {
 
 const PORT = process.env.PORT || 8000;
 server.listen(PORT, "0.0.0.0", () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+  const protocol = USE_HTTPS ? "https" : "http";
+  console.log(`🚀 Socket server running on ${protocol}://0.0.0.0:${PORT}`);
 });

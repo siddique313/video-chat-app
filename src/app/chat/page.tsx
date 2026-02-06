@@ -3,7 +3,9 @@
 import React, { useEffect, useRef, useState } from "react";
 import { io, Socket } from "socket.io-client";
 import configuration from "../config/config";
+import { getSocketUrl } from "@/app/config/socketUrl";
 import AppBar from "@/component/appBar";
+import { useUserCount } from "@/hooks/userCounts";
 
 /* ================= TYPES ================= */
 
@@ -19,9 +21,9 @@ export default function Page() {
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [messageText, setMessageText] = useState("");
-  const [userCount, setUserCount] = useState("🔃");
   const [, setMediaReady] = useState(false);
   const [, setRoomId] = useState<string | null>(null);
+  const [socketForCount, setSocketForCount] = useState<Socket | null>(null);
 
   /* ================= REFS ================= */
 
@@ -44,6 +46,15 @@ export default function Page() {
     const initCamera = async () => {
       try {
         if (localStreamRef.current) return;
+        if (
+          typeof window === "undefined" ||
+          !navigator.mediaDevices?.getUserMedia
+        ) {
+          console.warn(
+            "getUserMedia not available (e.g. SSR or insecure context)",
+          );
+          return;
+        }
 
         const stream = await navigator.mediaDevices.getUserMedia({
           video: true,
@@ -113,11 +124,12 @@ export default function Page() {
   /* ================= SOCKET + SIGNALING ================= */
 
   useEffect(() => {
-    const socket = io(process.env.NEXT_PUBLIC_SOCKET_URL as string, {
+    const socket = io(getSocketUrl(), {
       transports: ["websocket"],
     });
 
     socketRef.current = socket;
+    setSocketForCount(socket);
     socket.emit("join");
 
     socket.on("joined", ({ roomId }) => {
@@ -170,7 +182,6 @@ export default function Page() {
       setMessages((prev) => [...prev, { from: "remote", message }]);
     });
 
-    socket.on("user-count", (count) => setUserCount(count));
     socket.on("leaveRoom", cleanupRoom);
 
     return () => {
@@ -215,6 +226,8 @@ export default function Page() {
     setMessages((prev) => [...prev, { from: "host", message: messageText }]);
     setMessageText("");
   };
+  /* ================= userCounts Hook ================= */
+  const userCount = useUserCount(socketForCount);
 
   /* ================= UI ================= */
 

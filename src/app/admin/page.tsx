@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import io from "socket.io-client";
+import { getSocketUrl } from "@/app/config/socketUrl";
 
 export default function AdminPage() {
   const [onlineUsers, setOnlineUsers] = useState(0);
@@ -20,7 +21,7 @@ export default function AdminPage() {
 
   useEffect(() => {
     // Connect to the server
-    const newSocket = io("http://localhost:8000");
+    const newSocket = io(getSocketUrl());
     setSocket(newSocket);
 
     newSocket.on("connect", () => {
