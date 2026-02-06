@@ -1,12 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { MessageCircle, Sun, Flag } from "lucide-react";
+import { useUserCount } from "@/hooks/userCounts";
+import { io, Socket } from "socket.io-client";
+import { getSocketUrl } from "@/app/config/socketUrl";
 
 export default function Home() {
   const [interests, setInterests] = useState("");
   const [chatType, setChatType] = useState<"text" | "video" | null>(null);
+  const [socket, setSocket] = useState<Socket | null>(null);
   const router = useRouter();
 
   const handleStartChat = () => {
@@ -20,6 +24,18 @@ export default function Home() {
     }
   };
 
+  useEffect(() => {
+    const s = io(getSocketUrl(), {
+      transports: ["websocket"],
+    });
+    setSocket(s);
+    return () => {
+      s.disconnect();
+    };
+  }, []);
+
+  const userCount = useUserCount(socket);
+
   return (
     <div className="min-h-screen bg-black text-white">
       {/* Header */}
@@ -32,7 +48,7 @@ export default function Home() {
         </div>
         <div className="flex items-center gap-2">
           <Sun className="w-5 h-5 text-yellow-400" />
-          <span className="text-white">6824+ online</span>
+          <span className="text-white">{userCount} online</span>
           <div className="w-8 h-4 bg-gray-600 rounded-full relative">
             <div className="w-3 h-3 bg-white rounded-full absolute top-0.5 left-0.5"></div>
           </div>
