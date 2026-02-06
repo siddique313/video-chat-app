@@ -223,6 +223,6 @@ io.on("connection", (socket) => {
 /* ================= START SERVER ================= */
 
 const PORT = process.env.PORT || 8000;
-server.listen(PORT, "0.0.0.0", () => {
+server.listen(PORT, "0.0.0.0" || 3001, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
