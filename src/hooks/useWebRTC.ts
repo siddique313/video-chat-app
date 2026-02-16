@@ -2,7 +2,6 @@
 
 import { useRef, useEffect, useState, useCallback } from "react";
 import io, { Socket } from "socket.io-client";
-import { getSocketUrl } from "@/app/config/socketUrl";
 
 interface UseWebRTCOptions {
   roomId?: string;
@@ -146,7 +145,9 @@ export const useWebRTC = (options: UseWebRTCOptions = {}) => {
         socket.disconnect();
       }
 
-      const socketUrl = getSocketUrl();
+      const socketUrl =
+        process.env.NEXT_PUBLIC_SOCKET_URL ||
+        `${window.location.protocol}//${window.location.hostname}:8000`;
 
       const publicIP = await fetch("https://api.ipify.org?format=json")
         .then((res) => res.json())
@@ -216,7 +217,7 @@ export const useWebRTC = (options: UseWebRTCOptions = {}) => {
           } catch (err) {
             console.error("Error adding ICE candidate:", err);
           }
-        },
+        }
       );
 
       newSocket.on("message", (message) => {
