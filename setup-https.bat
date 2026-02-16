@@ -41,12 +41,14 @@ if exist "localhost+3.pem" (
 
 echo ✅ HTTPS setup complete!
 echo.
-echo 🚀 Start your app with HTTPS (both Next.js and socket server):
-echo    npm run dev:full:https
+echo 🚀 Start your app with HTTPS:
+echo npm run dev -- --experimental-https --experimental-https-key ./localhost-key.pem --experimental-https-cert ./localhost.pem
 echo.
-echo 🌐 Then open in browser (use your IP so it says "Secure"):
-echo    https://localhost:3000
-echo    https://%LOCAL_IP%:3000
+echo 🌐 Access your app at:
+echo https://localhost:3000
+echo https://%LOCAL_IP%:3000
 echo.
-echo 🔒 Using HTTPS removes the "Not secure" warning.
+echo 📱 For mobile testing, use ngrok:
+echo npx ngrok http 3000
+echo.
 pause
