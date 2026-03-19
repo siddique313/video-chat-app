@@ -127,31 +127,43 @@ export default function Page() {
     });
 
     socket.on("send-offer", async () => {
-      if (!pcRef.current) return;
-      const offer = await pcRef.current.createOffer();
-      await pcRef.current.setLocalDescription(offer);
+      const pc = pcRef.current;
+      if (!pc) return;
+
+      // ✅ IMPORTANT FIX
+      if (pc.signalingState !== "stable") {
+        console.log("Skip offer, state:", pc.signalingState);
+        return;
+      }
+
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
 
       socket.emit("offer", {
         roomId: roomIdRef.current,
-        offer: pcRef.current.localDescription,
+        offer: pc.localDescription,
       });
     });
 
     socket.on("offer", async ({ offer }) => {
-      createPeerConnection();
+      const pc = pcRef.current;
 
-      await pcRef.current!.setRemoteDescription(offer);
+      // 🔥 FIX: avoid conflict
+      if (pc?.signalingState !== "stable") {
+        console.log("Resetting due to collision");
 
-      const answer = await pcRef.current!.createAnswer();
-      await pcRef.current!.setLocalDescription(answer);
+        await pc?.setLocalDescription({ type: "rollback" });
+      }
+
+      await pc?.setRemoteDescription(offer);
+
+      const answer = await pc!.createAnswer();
+      await pc!.setLocalDescription(answer);
 
       socket.emit("answer", {
         roomId: roomIdRef.current,
-        answer: pcRef.current!.localDescription,
+        answer: pc!.localDescription,
       });
-
-      pendingIceRef.current.forEach((c) => pcRef.current?.addIceCandidate(c));
-      pendingIceRef.current = [];
     });
 
     socket.on("answer", async ({ answer }) => {
@@ -197,11 +209,24 @@ export default function Page() {
 
   /* ================= ACTIONS ================= */
 
-  const handleSkip = () => {
-    socketRef.current?.emit("leaveRoom");
-    cleanupRoom();
-    socketRef.current?.emit("join");
-  };
+const handleSkip = () => {
+  socketRef.current?.emit("leaveRoom");
+
+  if (pcRef.current) {
+    pcRef.current.ontrack = null;
+    pcRef.current.onicecandidate = null;
+    pcRef.current.close();
+  }
+
+  pcRef.current = null;
+  remoteStreamRef.current = null;
+
+  if (remoteVideoRef.current) {
+    remoteVideoRef.current.srcObject = null;
+  }
+
+  socketRef.current?.emit("join");
+};
 
   const handleSend = (e?: React.SyntheticEvent) => {
     e?.preventDefault();
