@@ -5,25 +5,15 @@ import { io, Socket } from "socket.io-client";
 import configuration from "../config/config";
 import AppBar from "@/component/appBar";
 
-/* ================= TYPES ================= */
-
 interface Message {
   from: "host" | "remote";
   message: string;
 }
 
-/* ================= PAGE ================= */
-
 export default function Page() {
-  /* ================= STATE ================= */
-
   const [messages, setMessages] = useState<Message[]>([]);
   const [messageText, setMessageText] = useState("");
   const [userCount, setUserCount] = useState("🔃");
-  const [, setMediaReady] = useState(false);
-  const [, setRoomId] = useState<string | null>(null);
-
-  /* ================= REFS ================= */
 
   const socketRef = useRef<Socket | null>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
@@ -36,40 +26,26 @@ export default function Page() {
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
 
-  const inputRef = useRef<HTMLInputElement | null>(null);
-
-  /* ================= INIT LOCAL CAMERA (FIXED) ================= */
+  /* ================= CAMERA ================= */
 
   useEffect(() => {
-    const initCamera = async () => {
-      try {
-        if (localStreamRef.current) return;
+    const init = async () => {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: true,
+      });
 
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: true,
-          audio: true,
-        });
+      localStreamRef.current = stream;
 
-        localStreamRef.current = stream;
-
-        if (localVideoRef.current) {
-          localVideoRef.current.srcObject = stream;
-          localVideoRef.current.muted = true;
-          localVideoRef.current.playsInline = true;
-          // Removed explicit play() call - autoPlay attribute handles this
-        }
-
-        setMediaReady(true);
-      } catch (err) {
-        console.error("Camera error:", err);
-        alert("Please allow camera & microphone access");
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = stream;
       }
     };
 
-    initCamera();
+    init();
   }, []);
 
-  /* ================= CREATE PEER CONNECTION ================= */
+  /* ================= PEER ================= */
 
   const createPeerConnection = () => {
     if (pcRef.current) return;
@@ -77,12 +53,12 @@ export default function Page() {
     const pc = new RTCPeerConnection(configuration);
     pcRef.current = pc;
 
-    // Add local tracks
+    // Add tracks
     localStreamRef.current?.getTracks().forEach((track) => {
       pc.addTrack(track, localStreamRef.current!);
     });
 
-    // ICE candidates
+    // ICE
     pc.onicecandidate = (e) => {
       if (e.candidate && roomIdRef.current) {
         socketRef.current?.emit("ice-candidates", {
@@ -92,25 +68,34 @@ export default function Page() {
       }
     };
 
-    // Remote stream
+    // TRACK (FIXED)
     pc.ontrack = (e) => {
+      console.log("TRACK RECEIVED");
+
       if (!remoteStreamRef.current) {
         remoteStreamRef.current = new MediaStream();
-        if (remoteVideoRef.current) {
-          remoteVideoRef.current.srcObject = remoteStreamRef.current;
-          remoteVideoRef.current.playsInline = true;
-        }
       }
-      if (
-        remoteStreamRef.current &&
-        !remoteStreamRef.current.getTracks().includes(e.track)
-      ) {
-        remoteStreamRef.current.addTrack(e.track);
+
+      e.streams[0].getTracks().forEach((track) => {
+        remoteStreamRef.current!.addTrack(track);
+      });
+
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.srcObject = remoteStreamRef.current;
+
+        remoteVideoRef.current
+          .play()
+          .catch((err) => console.log("Play error:", err));
       }
+    };
+
+    // DEBUG
+    pc.onconnectionstatechange = () => {
+      console.log("Connection:", pc.connectionState);
     };
   };
 
-  /* ================= SOCKET + SIGNALING ================= */
+  /* ================= SOCKET ================= */
 
   useEffect(() => {
     const socket = io(process.env.NEXT_PUBLIC_SOCKET_URL as string, {
@@ -121,20 +106,16 @@ export default function Page() {
     socket.emit("join");
 
     socket.on("joined", ({ roomId }) => {
-      setRoomId(roomId);
       roomIdRef.current = roomId;
       createPeerConnection();
     });
 
+    // SEND OFFER (FIXED)
     socket.on("send-offer", async () => {
       const pc = pcRef.current;
       if (!pc) return;
 
-      // ✅ IMPORTANT FIX
-      if (pc.signalingState !== "stable") {
-        console.log("Skip offer, state:", pc.signalingState);
-        return;
-      }
+      if (pc.signalingState !== "stable") return;
 
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
@@ -145,25 +126,27 @@ export default function Page() {
       });
     });
 
+    // RECEIVE OFFER (FIXED)
     socket.on("offer", async ({ offer }) => {
       const pc = pcRef.current;
+      if (!pc) return;
 
-      // 🔥 FIX: avoid conflict
-      if (pc?.signalingState !== "stable") {
-        console.log("Resetting due to collision");
-
-        await pc?.setLocalDescription({ type: "rollback" });
+      if (pc.signalingState !== "stable") {
+        await pc.setLocalDescription({ type: "rollback" });
       }
 
-      await pc?.setRemoteDescription(offer);
+      await pc.setRemoteDescription(offer);
 
-      const answer = await pc!.createAnswer();
-      await pc!.setLocalDescription(answer);
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
 
       socket.emit("answer", {
         roomId: roomIdRef.current,
-        answer: pc!.localDescription,
+        answer: pc.localDescription,
       });
+
+      pendingIceRef.current.forEach((c) => pc.addIceCandidate(c));
+      pendingIceRef.current = [];
     });
 
     socket.on("answer", async ({ answer }) => {
@@ -171,8 +154,10 @@ export default function Page() {
     });
 
     socket.on("ice-candidates", ({ candidate }) => {
-      if (pcRef.current?.remoteDescription) {
-        pcRef.current.addIceCandidate(candidate);
+      const pc = pcRef.current;
+
+      if (pc?.remoteDescription) {
+        pc.addIceCandidate(candidate);
       } else {
         pendingIceRef.current.push(candidate);
       }
@@ -182,54 +167,42 @@ export default function Page() {
       setMessages((prev) => [...prev, { from: "remote", message }]);
     });
 
-    socket.on("user-count", (count) => setUserCount(count));
-    socket.on("leaveRoom", cleanupRoom);
+    socket.on("user-count", setUserCount);
+
+    socket.on("leaveRoom", cleanup);
 
     return () => {
       socket.disconnect();
-      cleanupRoom();
+      cleanup();
     };
   }, []);
 
   /* ================= CLEANUP ================= */
 
-  const cleanupRoom = () => {
-    setRoomId(null);
-    roomIdRef.current = null;
+  const cleanup = () => {
+    if (pcRef.current) {
+      pcRef.current.close();
+    }
 
-    remoteStreamRef.current?.getTracks().forEach((t) => t.stop());
-    remoteStreamRef.current = null;
-    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
-
-    if (pcRef.current) pcRef.current.close();
     pcRef.current = null;
+    remoteStreamRef.current = null;
+
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.srcObject = null;
+    }
 
     setMessages([]);
   };
 
   /* ================= ACTIONS ================= */
 
-const handleSkip = () => {
-  socketRef.current?.emit("leaveRoom");
+  const handleSkip = () => {
+    socketRef.current?.emit("leaveRoom");
+    cleanup();
+    socketRef.current?.emit("join");
+  };
 
-  if (pcRef.current) {
-    pcRef.current.ontrack = null;
-    pcRef.current.onicecandidate = null;
-    pcRef.current.close();
-  }
-
-  pcRef.current = null;
-  remoteStreamRef.current = null;
-
-  if (remoteVideoRef.current) {
-    remoteVideoRef.current.srcObject = null;
-  }
-
-  socketRef.current?.emit("join");
-};
-
-  const handleSend = (e?: React.SyntheticEvent) => {
-    e?.preventDefault();
+  const handleSend = () => {
     if (!roomIdRef.current || !messageText.trim()) return;
 
     socketRef.current?.emit("message", {
@@ -247,75 +220,47 @@ const handleSkip = () => {
     <div className="bg-zinc-900 min-h-screen flex flex-col">
       <AppBar online={userCount} />
 
-      <div className="flex-grow mt-2 mx-4 md:mx-20 grid grid-cols-1 md:grid-cols-12 gap-6">
-        {/* VIDEO */}
+      <div className="flex-grow grid grid-cols-1 md:grid-cols-12 gap-6 p-4">
         <div className="md:col-span-5 flex flex-col gap-4">
-          <div className="bg-black rounded-3xl overflow-hidden h-[45%]">
-            <video
-              ref={remoteVideoRef}
-              autoPlay
-              playsInline
-              className="w-full h-full object-cover"
-              onError={(e) => console.error("Remote video error:", e)}
-            />
-          </div>
-
-          <div className="bg-black rounded-3xl overflow-hidden h-[45%]">
-            <video
-              ref={localVideoRef}
-              autoPlay
-              muted
-              playsInline
-              className="w-full h-full object-cover"
-              onError={(e) => console.error("Local video error:", e)}
-            />
-          </div>
+          <video
+            ref={remoteVideoRef}
+            autoPlay
+            muted
+            playsInline
+            className="bg-black rounded-2xl h-[45%]"
+          />
+          <video
+            ref={localVideoRef}
+            autoPlay
+            muted
+            playsInline
+            className="bg-black rounded-2xl h-[45%]"
+          />
         </div>
 
-        {/* CHAT */}
-        <div className="md:col-span-7 bg-zinc-800 rounded-3xl p-5 flex flex-col">
+        <div className="md:col-span-7 bg-zinc-800 rounded-2xl p-4 flex flex-col">
           <div className="flex-grow overflow-y-auto">
             {messages.map((m, i) => (
-              <div
-                key={i}
-                className={`my-2 ${
-                  m.from === "host" ? "text-right" : "text-left"
-                }`}
-              >
-                <span
-                  className={`px-4 py-2 rounded-2xl inline-block ${
-                    m.from === "host"
-                      ? "bg-blue-500 text-white"
-                      : "bg-gray-200 text-black"
-                  }`}
-                >
+              <div key={i} className={m.from === "host" ? "text-right" : ""}>
+                <span className="bg-blue-500 text-white px-3 py-1 rounded">
                   {m.message}
                 </span>
               </div>
             ))}
           </div>
 
-          <div className="flex gap-2 mt-3">
-            <button
-              onClick={handleSkip}
-              className="bg-green-500 text-white px-4 rounded-lg"
-            >
+          <div className="flex gap-2 mt-2">
+            <button onClick={handleSkip} className="bg-green-500 px-4">
               SKIP
             </button>
 
             <input
-              ref={inputRef}
               value={messageText}
               onChange={(e) => setMessageText(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSend(e)}
-              className="flex-grow bg-zinc-700 text-white px-4 rounded-lg"
-              placeholder="Type message..."
+              className="flex-grow bg-zinc-700 px-3"
             />
 
-            <button
-              onClick={handleSend}
-              className="bg-blue-500 text-white px-4 rounded-lg"
-            >
+            <button onClick={handleSend} className="bg-blue-500 px-4">
               SEND
             </button>
           </div>
